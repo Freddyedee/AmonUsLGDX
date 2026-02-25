@@ -9,6 +9,8 @@ public interface Player {
     boolean alive();
     boolean connected();
 
+    void move(int deltaX, int deltaY);
+
     // Mutaciones controladas del estado
     void kill();
     void disconnect();

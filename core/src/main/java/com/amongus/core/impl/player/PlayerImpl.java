@@ -3,11 +3,13 @@ package com.amongus.core.impl.player;
 import com.amongus.core.api.player.Player;
 import com.amongus.core.api.player.Role;
 import com.amongus.core.api.player.PlayerId;
+import com.amongus.core.model.Position;
 
 public class PlayerImpl implements Player {
 
     private final PlayerId id;
     private final String name;
+    private Position position;
 
     private Role role;
     private boolean alive;
@@ -18,6 +20,7 @@ public class PlayerImpl implements Player {
         this.name = name;
         this.alive = true;
         this.connected = true;
+        this.position=new Position(0,0);
     }
 
     //Implementa los metodos definidos en la intrface Player
@@ -29,6 +32,10 @@ public class PlayerImpl implements Player {
     @Override
     public String getName() {
         return name;
+    }
+
+    public Position getPosition() {
+        return position;
     }
 
     @Override
@@ -44,6 +51,12 @@ public class PlayerImpl implements Player {
     @Override
     public boolean connected() {
         return connected;
+    }
+
+
+    @Override
+    public void move(int deltaX, int deltaY) {
+        this.position=new Position(this.position.x()+deltaX,this.position.y()+deltaY);
     }
 
     /*Metodos que usan gameSesion*/
