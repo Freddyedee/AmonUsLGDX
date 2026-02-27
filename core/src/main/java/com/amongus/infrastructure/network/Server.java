@@ -13,12 +13,6 @@ public class Server extends Thread{
     //mientras se envian los mensajes
     private final List<PlayerHandler> clients = Collections.synchronizedList(new ArrayList<>());
 
-    //prueba de inicializacion del servidor
-    public static void main(String args[]) {
-        Server s=new Server();
-        s.start();
-    }
-
     @Override
     public void run() {
         //inicializa el servidor

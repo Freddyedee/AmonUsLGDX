@@ -4,6 +4,7 @@ import com.amongus.core.api.player.PlayerId;
 import com.amongus.core.impl.player.PlayerController;
 import com.amongus.core.impl.player.PlayerImpl;
 import com.amongus.core.impl.player.ShowPlayer;
+import com.amongus.infrastructure.network.Server;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Texture;
@@ -34,6 +35,9 @@ public class FirstScreen implements Screen {
         showPlayer.showPlayer();
         controller=new PlayerController(showPlayer);
         mapa=new Texture("mapas/mapa1.png");
+
+        Server server=new Server();
+        server.start();
     }
 
     //funcion que se ejecuta una y otra vez permitiendo ir actualizando la pantalla
