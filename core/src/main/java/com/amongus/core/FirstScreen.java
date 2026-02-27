@@ -36,6 +36,7 @@ public class FirstScreen implements Screen {
         controller=new PlayerController(showPlayer);
         mapa=new Texture("mapas/mapa1.png");
 
+        //prueba del servidor
         Server server=new Server();
         server.start();
     }
