@@ -44,7 +44,7 @@ public class AmongUsGame extends Game {
 
 
         // 3. Finalmente ponemos la pantalla
-        setScreen(new FirstScreen(engine));
+        setScreen(new GameScreen(engine));
     }
     @Override
     public void dispose(){
