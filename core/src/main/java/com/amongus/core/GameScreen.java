@@ -53,7 +53,7 @@ public class GameScreen implements Screen {
         camera.setToOrtho(false, 800, 480);
 
         mapa      = new Texture("mapas/mapa1.png");
-        pixelRojo = new Texture("sprites/PixelRojo.png");
+        pixelRojo = new Texture("fx/PixelRojo.png");
 
         // LocalActionSender hoy, NetworkActionSender mañana — una sola línea cambia
         ActionSender sender = new LocalActionSender(engine);
@@ -109,7 +109,7 @@ public class GameScreen implements Screen {
             if (!pv.isAlive()) {
                 playerRenderer.draw(batch,
                     pv.getPosition().x(), pv.getPosition().y(),
-                    pv.getId(), 1, false, false);
+                    pv.getId(), 1, false, false, pv.getSkinColor());
             }
         }
 
@@ -121,7 +121,7 @@ public class GameScreen implements Screen {
 
                 playerRenderer.draw(batch,
                     pv.getPosition().x(), pv.getPosition().y(),
-                    pv.getId(), dir, moving, true);
+                    pv.getId(), dir, moving, true, pv.getSkinColor());
             }
         }
 

@@ -3,6 +3,7 @@ package com.amongus.core.impl.player;
 import com.amongus.core.api.player.Player;
 import com.amongus.core.api.player.Role;
 import com.amongus.core.api.player.PlayerId;
+import com.amongus.core.api.player.SkinColor;
 import com.amongus.core.model.Position;
 
 public class PlayerImpl implements Player {
@@ -10,6 +11,8 @@ public class PlayerImpl implements Player {
     private final PlayerId id;
     private final String name;
     private Position position;
+    private final SkinColor skinColor;
+
 
     private Role role;
     private boolean alive;
@@ -18,12 +21,14 @@ public class PlayerImpl implements Player {
     private boolean moving = false;
     private int direction = 1;
 
-    public PlayerImpl(PlayerId id, String name){
+    public PlayerImpl(PlayerId id, String name, SkinColor skinColor){
         this.id = id;
         this.name = name;
+        this.skinColor = skinColor;
         this.alive = true;
         this.connected = true;
         this.position=new Position(2500,2500);
+
     }
 
     //Implementa los metodos definidos en la intrface Player
@@ -83,6 +88,10 @@ public class PlayerImpl implements Player {
 
     public int getDirection() {
         return direction;
+    }
+
+    public SkinColor getSkinColor() {
+        return skinColor;
     }
 
     public void setDirection(int direction) {

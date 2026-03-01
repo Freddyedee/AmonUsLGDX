@@ -7,16 +7,19 @@ import com.amongus.core.api.map.GameMap;
 import com.amongus.core.api.player.Player;
 import com.amongus.core.api.player.PlayerId;
 import com.amongus.core.api.player.Role;
+import com.amongus.core.api.player.SkinColor;
 import com.amongus.core.api.session.GameSession;
 import com.amongus.core.api.state.GameState;
 import com.amongus.core.impl.event.EventBusImpl;
 import com.amongus.core.impl.map.SimpleMap;
+import com.amongus.core.impl.player.ColorAssigner;
 import com.amongus.core.impl.session.GameSessionImpl;
 import com.amongus.core.view.GameSnapshot;
 import com.amongus.core.view.PlayerView;
 import com.amongus.core.impl.player.PlayerImpl;
 import com.amongus.core.impl.voting.VotingSystemImpl;
 import com.badlogic.gdx.math.Interpolation;
+import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 
 import java.util.List;
 import java.util.Optional;
@@ -49,6 +52,7 @@ public class GameEngine {
     private PlayerId localPlayerId;
     private final VotingSystemImpl votingSystem = new VotingSystemImpl();
     private String gameResult = null;
+    private final ColorAssigner colorAssigner = new ColorAssigner();
 
     public GameEngine(){
         this.sessionId = UUID.randomUUID();
@@ -63,7 +67,8 @@ public class GameEngine {
     public GameSnapshot getSnapshot() {
         List<PlayerView> playerViews = session.getPlayers().stream()
             .map(p -> {
-                PlayerView view = new PlayerView(p.getId(), p.alive(), p.getPosition(), p.getName());
+                SkinColor color = (p instanceof PlayerImpl pi) ? pi.getSkinColor() : SkinColor.WHITE;
+                PlayerView view = new PlayerView(p.getId(), p.alive(), p.getPosition(), p.getName(), color);
                 if (p instanceof PlayerImpl pi) {
                     view.setMoving(pi.isMoving());
                     view.setDirection(pi.getDirection());
@@ -91,7 +96,8 @@ public class GameEngine {
     // Modifica tu spawnPlayer así:
     public PlayerId spawnPlayer(String name) {
         PlayerId newId = PlayerId.random();
-        Player player = new PlayerImpl(newId, name);
+        SkinColor color = colorAssigner.assign();
+        Player player = new PlayerImpl(newId, name, color);
         session.addPlayer(player);
 
         // El primer jugador que spawneamos en esta instancia será el local
