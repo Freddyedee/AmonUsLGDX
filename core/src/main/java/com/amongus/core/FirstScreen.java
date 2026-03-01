@@ -1,18 +1,22 @@
 package com.amongus.core;
 
+import com.amongus.core.view.TaskView;
 import com.amongus.core.api.player.PlayerId;
 import com.amongus.core.api.state.GameState;
 import com.amongus.core.impl.engine.GameEngine;
 import com.amongus.core.impl.player.PlayerController;
+import com.amongus.core.model.Position;
 import com.amongus.core.view.GameSnapshot;
 import com.amongus.core.view.PlayerRenderer;
 import com.amongus.core.view.PlayerView;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.Screen;
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.ScreenUtils;
 
@@ -31,6 +35,9 @@ public class FirstScreen implements Screen {
     private PlayerController controller;
     private float bloodOverlay = 0;
     private Texture pixelRojo;
+
+    //Recursos para Task
+    private ShapeRenderer shapeRenderer;
 
      private float shakeTimer = 0;
      private float killCooldown = 0;
@@ -53,6 +60,8 @@ public class FirstScreen implements Screen {
 
 
         this.myPlayerId = engine.getLocalPlayerId();
+
+        shapeRenderer = new ShapeRenderer();   // ← AÑADIR ESTA LÍNEA
 
         //EL ENGINE CREA AL JUGADOR, NO LA PANTALLA
         controller = new PlayerController(engine, myPlayerId);
@@ -132,19 +141,49 @@ public class FirstScreen implements Screen {
             }
         }
 
-        // 4. Capa de vivos
+        batch.end();
+
+        //4.capa de tasks
+        // === NUEVO: DIBUJAR LAS TAREAS + OUTLINE AMARILLO ===
+        // Dibujar tareas con ShapeRenderer (en coordenadas de mundo)
+        shapeRenderer.setProjectionMatrix(camera.combined);  // ← esto es lo clave
+
+        for (TaskView tv : snapshot.getTasks()) {
+            float x = tv.getPosition().x();
+            float y = tv.getPosition().y();
+
+            // Calcular distancia al jugador local
+            PlayerView meT = snapshot.getPlayers().stream()
+                .filter(p -> p.getId().equals(myPlayerId))
+                .findFirst().orElse(null);
+
+            float dist = (meT != null) ? Vector2.dst(meT.getPosition().x(), meT.getPosition().y(), x, y) : Float.MAX_VALUE;
+            boolean nearby = dist <= 150f;
+
+            // Círculo base amarillo
+            shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+            shapeRenderer.setColor(nearby ? Color.YELLOW : new Color(0.8f, 0.8f, 0f, 0.7f));
+            shapeRenderer.circle(x, y, 20);
+            shapeRenderer.end();
+
+            // Outline más brillante si estás cerca
+            shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
+            shapeRenderer.setColor(nearby ? Color.WHITE : Color.YELLOW);
+            shapeRenderer.circle(x, y, 30);
+            shapeRenderer.end();
+        }
+
+        // capa de vivos (reabrir batch)
+        batch.begin();
         for (PlayerView pv : snapshot.getPlayers()) {
             if (pv.isAlive()) {
                 boolean isMe = pv.getId().equals(myPlayerId);
-                int dir     = isMe ? controller.getDireccion() : pv.getDirection();
-                boolean moving = pv.isMoving();
-
+                int dir = isMe ? controller.getDireccion() : pv.getDirection();
                 playerRenderer.draw(batch, pv.getPosition().x(), pv.getPosition().y(),
-                    pv.getId(), dir, moving, true);
+                    pv.getId(), dir, pv.isMoving(), true);
             }
         }
-
-        batch.end();
+        batch.end();  // ← cierre final
     }
 
     public void renderVoting(GameSnapshot snapshot){
@@ -184,5 +223,6 @@ public class FirstScreen implements Screen {
         batch.dispose();
         mapa.dispose();
         playerTexture.dispose();
+        shapeRenderer.dispose();
     }
 }

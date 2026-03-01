@@ -25,12 +25,16 @@ public final class PlayerRenderer implements Disposable {
     }
 
     private void loadTextures() {
+        System.out.println("[PlayerRenderer] Cargando texturas...");
+
         // Cargamos el idle
         sprites[0] = new Texture("sprites/idle.png");
+        System.out.println("[PlayerRenderer] idle cargado: " + sprites[0]);
         // Cargamos la caminata
         for (int i = 1; i <= 12; i++) {
             String num = String.format("%04d", i);
             sprites[i] = new Texture("sprites/Walk" + num + ".png");
+            System.out.println("[PlayerRenderer] cargado: " + sprites[i]);
         }
 
         deadTexture = new Texture("sprites/DeadAmong.png");

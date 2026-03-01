@@ -10,5 +10,8 @@ public sealed interface GameEvent
         PlayerMovedEvent,
         VoteCastEvent,
         VotingResolvedEvent,
-        VotingStartedEvent {
+        VotingStartedEvent,
+        TaskCompletedEvent,
+        TaskInteractionCancelledEvent,
+        TaskInteractionStartedEvent {
 }

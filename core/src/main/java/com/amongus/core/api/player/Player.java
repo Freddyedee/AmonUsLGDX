@@ -20,4 +20,6 @@ public interface Player {
     Position getPosition();
 
     void updatePosition(Position targetPos);
+
+
 }

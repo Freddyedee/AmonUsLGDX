@@ -3,13 +3,20 @@ package com.amongus.core.impl.session;
 import com.amongus.core.api.Vote.Vote;
 import com.amongus.core.api.events.*;
 import com.amongus.core.api.map.GameMap;
+import com.amongus.core.api.minigame.MinigameScreen;
 import com.amongus.core.api.player.Player;
 import com.amongus.core.api.player.PlayerId;
 import com.amongus.core.api.player.Role;
 import com.amongus.core.api.session.GameSession;
 import com.amongus.core.api.state.GameState;
+import com.amongus.core.api.task.Task;
+import com.amongus.core.api.task.TaskId;
+import com.amongus.core.impl.engine.GameEngine;
 import com.amongus.core.impl.state.GameStateMachine;
+import com.amongus.core.impl.task.TaskFactory;
 import com.amongus.core.model.Position;
+import com.badlogic.gdx.Game;
+import com.badlogic.gdx.Gdx;
 
 import java.util.*;
 
@@ -50,12 +57,28 @@ public class GameSessionImpl implements GameSession {
     private final Map<PlayerId, Player> players;
 
 
+    // --------------------------------------------------
+    // ATRIBUTOS RELACIONADOS CON TASK
+    // -------------------------------------------------
+
+    private final Map<TaskId, Task> allTasks;
+    private final Map<PlayerId, Set<TaskId>> assignedTaskIdsByPlayer;   // solo las que aún debe hacer
+    private final Map<PlayerId, Set<TaskId>> completedTaskIdsByPlayer;  // las que ya terminó
+
+    private final TaskFactory taskFactory;
+
     /**
      * Tareas asignadas a los jugadores.
      * No todas las partidas las usan de inmediato,
      * pero el core mantiene la estructura preparada.
      */
-    //private final Map<PlayerId, List<Task>> taskByPlayer;
+    // private final Map<PlayerId, List<Task>> taskByPlayer;
+
+
+
+
+
+
 
     /*
     * Votos emitidos durante una fase de votación.
@@ -71,7 +94,7 @@ public class GameSessionImpl implements GameSession {
      * Esto facilita pruebas, reemplazos y extensiones.
      * */
 
-    public GameSessionImpl(UUID sessionId, EventBus eventBus, GameMap gameMap){
+    public GameSessionImpl(UUID sessionId, EventBus eventBus, GameMap gameMap,GameEngine engine){
         this.sessionId = UUID.randomUUID();
         this.eventBus = eventBus;
         this.gameMap = gameMap;
@@ -80,7 +103,13 @@ public class GameSessionImpl implements GameSession {
 
 
         this.players = new HashMap<>();
-        //this.taskByPlayer = new HashMap<>();
+
+        //INICIALIZAR EL HASH PARA ASIGNAR LAS TAREAS A LOS JUGADORES
+        this.taskFactory = new TaskFactory(engine);
+        this.allTasks = new HashMap<>();
+        this.assignedTaskIdsByPlayer = new HashMap<>();
+        this.completedTaskIdsByPlayer = new HashMap<>();
+
         this.currentVotes = new HashMap<>();
     }
 
@@ -116,13 +145,38 @@ public class GameSessionImpl implements GameSession {
      *  - El estado pasa de LOBBY a PLAYING
      */
     @Override
-    public void startGame(){
-      if (players.size() < 1){
-          throw new IllegalStateException("No hay suficientes jugadores");
-      }
+    public void startGame() {
+        if (players.size() < 1) {
+            throw new IllegalStateException("No hay suficientes jugadores");
+        }
 
-      stateMachine.transitionTo(GameState.IN_GAME);
-      eventBus.publish(new GameStartedEvent(sessionId));
+        stateMachine.transitionTo(GameState.IN_GAME);
+
+        // 1. Definir posiciones hardcodeadas para las tareas
+        List<Position> taskPositions = List.of(
+            new Position(600, 500),   // ← al lado del spawn del jugador
+            new Position(1200, 2800),
+            new Position(1200, 2800)
+        );
+
+        // 2. Crear las tareas y registrarlas en allTasks
+        List<Task> tasks = taskPositions.stream()
+            .map(pos -> taskFactory.createNumberTask(pos))
+            .toList();
+
+        tasks.forEach(t -> allTasks.put(t.getId(), t));
+
+        // 3. Asignar las tareas solo a los crewmates
+        for (Player player : players.values()) {
+            if (player.getRole() == Role.CREWMATE) {
+                Set<TaskId> ids = tasks.stream()
+                    .map(Task::getId)
+                    .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+                assignedTaskIdsByPlayer.put(player.getId(), ids);
+            }
+        }
+
+        eventBus.publish(new GameStartedEvent(sessionId));
     }
 
     // --------------------------------------------------
@@ -249,6 +303,50 @@ public class GameSessionImpl implements GameSession {
     @Override
     public Collection<Player> getPlayers() {
         return Collections.unmodifiableCollection(players.values());
+    }
+
+
+    // Devuelve las tareas pendientes del jugador
+    @Override
+    public List<Task> getTasksForPlayer(PlayerId playerId) {
+        Set<TaskId> assignedIds = assignedTaskIdsByPlayer.getOrDefault(playerId, Set.of());
+        return assignedIds.stream()
+            .map(allTasks::get)
+            .filter(Objects::nonNull)
+            .toList();
+    }
+
+    // Verifica si una tarea está pendiente (no completada)
+    private boolean isTaskPendingFor(PlayerId playerId, TaskId taskId) {
+        return assignedTaskIdsByPlayer.getOrDefault(playerId, Set.of()).contains(taskId) &&
+            !completedTaskIdsByPlayer.getOrDefault(playerId, Set.of()).contains(taskId);
+    }
+
+    @Override
+    public void initiateTask(PlayerId playerId, TaskId taskId) {
+        System.out.println("[initiateTask] llamado por: " + playerId);
+        System.out.println("[initiateTask] taskId: " + taskId);
+        System.out.println("[initiateTask] estado actual: " + stateMachine.getCurrentState());
+        System.out.println("[initiateTask] tareas asignadas al jugador: " + assignedTaskIdsByPlayer.get(playerId));
+        System.out.println("[initiateTask] allTasks keys: " + allTasks.keySet());
+
+        requireState(GameState.IN_GAME);
+
+        if (!isTaskPendingFor(playerId, taskId)) {
+            System.out.println("[initiateTask] RECHAZADO: tarea no asignada o ya completada");
+            return;
+        }
+
+        Task task = allTasks.get(taskId);
+        if (task == null) {
+            System.out.println("[initiateTask] RECHAZADO: tarea no encontrada en allTasks");
+            return;
+        }
+
+        System.out.println("[initiateTask] ABRIENDO minijuego: " + task.getName());
+        MinigameScreen screen = task.getMinigameProvider().createScreen(playerId, task);
+        ((Game) Gdx.app.getApplicationListener()).setScreen(screen);
+        eventBus.publish(new TaskInteractionStartedEvent(playerId, task.getId()));
     }
 
 /* ============================================================

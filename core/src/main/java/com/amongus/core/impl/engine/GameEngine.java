@@ -1,6 +1,7 @@
 package com.amongus.core.impl.engine;
 
 
+import com.amongus.core.FirstScreen;
 import com.amongus.core.api.Vote.Vote;
 import com.amongus.core.api.events.EventBus;
 import com.amongus.core.api.map.GameMap;
@@ -9,12 +10,15 @@ import com.amongus.core.api.player.PlayerId;
 import com.amongus.core.api.player.Role;
 import com.amongus.core.api.session.GameSession;
 import com.amongus.core.api.state.GameState;
+import com.amongus.core.api.task.Task;
+import com.amongus.core.api.task.TaskId;
 import com.amongus.core.impl.event.EventBusImpl;
 import com.amongus.core.impl.map.SimpleMap;
 import com.amongus.core.impl.session.GameSessionImpl;
 import com.amongus.core.view.GameSnapshot;
 import com.amongus.core.view.PlayerView;
 import com.amongus.core.impl.player.PlayerImpl;
+import com.amongus.core.view.TaskView;
 
 import java.util.List;
 import java.util.UUID;
@@ -39,6 +43,8 @@ import java.util.UUID;
 
 public class GameEngine {
 
+    private FirstScreen mainScreen;
+
     private final UUID sessionId;
     private final EventBus eventBus;
     private final GameSession session;
@@ -50,7 +56,7 @@ public class GameEngine {
         this.sessionId = UUID.randomUUID();
         this.eventBus = new EventBusImpl();
         this.gameMap = new SimpleMap();
-        this.session = new GameSessionImpl(sessionId, eventBus, gameMap);
+        this.session = new GameSessionImpl(sessionId, eventBus, gameMap, this);
 
     }
 
@@ -68,14 +74,33 @@ public class GameEngine {
             })
             .toList();
 
-        return new GameSnapshot(session.getCurrentState(), playerViews, localPlayerId);
+        // NUEVO: Obtenemos las tareas del jugador local
+        List<Task> playerTasks = session.getTasksForPlayer(localPlayerId);
+
+        // Convertimos a TaskView para la UI
+        List<TaskView> taskViews = playerTasks.stream()
+            .map(TaskView::new)
+            .toList();
+
+        return new GameSnapshot(
+            session.getCurrentState(),
+            playerViews,
+            localPlayerId,
+            taskViews                     // ← 4º parámetro
+        );
     }
+
+
     public EventBus getEventBus() {
         return eventBus;
     }
 
     public GameState getGameState() {
         return session.getCurrentState();
+    }
+
+    public void initiateTask(TaskId taskId) {
+        session.initiateTask(localPlayerId, taskId);
     }
 
     /* ===================== CASOS DE USO ===================== */
@@ -175,4 +200,11 @@ public class GameEngine {
         return localPlayerId;
     }
 
+    public void setMainScreen(FirstScreen screen) {
+        this.mainScreen = screen;
+    }
+
+    public FirstScreen getMainScreen() {
+        return mainScreen;
+    }
 }

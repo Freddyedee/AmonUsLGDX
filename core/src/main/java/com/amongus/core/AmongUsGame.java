@@ -25,22 +25,22 @@ public class AmongUsGame extends Game {
 
     @Override
     public void create() {
-        this.engine = new GameEngine();
+        this.engine = new GameEngine();                  // 1. primero el engine
 
-        // 1. Spawneamos a los jugadores primero (Estado: LOBBY)
-        PlayerId myPlayerId = engine.spawnPlayer("Local Player"); // Este será el tuyo (myPlayerId)
-        PlayerId testPlayer = engine.spawnPlayer("test Player"); // Este será el tuyo (myPlayerId)
+        PlayerId myPlayerId = engine.spawnPlayer("Local Player");
+        PlayerId testPlayer = engine.spawnPlayer("test Player");
 
-        engine.assignRole(testPlayer, Role.CREWMATE);
-        engine.assignRole(myPlayerId, Role.IMPOSTOR);
+        engine.assignRole(testPlayer, Role.IMPOSTOR);
+        engine.assignRole(myPlayerId, Role.CREWMATE);
 
         engine.startGame();
 
         engine.movePlayer(myPlayerId, new Position(500, 500));
         engine.movePlayer(testPlayer, new Position(350, 350));
 
-        // 3. Finalmente ponemos la pantalla
-        setScreen(new FirstScreen(engine));
+        FirstScreen firstScreen = new FirstScreen(engine); // 2. luego la pantalla
+        setScreen(firstScreen);
+        engine.setMainScreen(firstScreen);
     }
     @Override
     public void dispose(){
