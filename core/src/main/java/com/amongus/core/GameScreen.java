@@ -6,9 +6,8 @@ import com.amongus.core.api.state.GameState;
 import com.amongus.core.impl.actions.LocalActionSender;
 import com.amongus.core.impl.engine.GameEngine;
 import com.amongus.core.impl.player.InputHandler;
-import com.amongus.core.view.GameSnapshot;
-import com.amongus.core.view.PlayerRenderer;
-import com.amongus.core.view.PlayerView;
+import com.amongus.core.model.Position;
+import com.amongus.core.view.*;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.Color;
@@ -36,6 +35,10 @@ public class GameScreen implements Screen {
 
     // ── Input ─────────────────────────────────────────────────
     private InputHandler inputHandler;
+    private HudRenderer hudRenderer;
+
+    //Renderizado de muerte
+    private AnimationPlayer killAnimation;
 
     public GameScreen(GameEngine engine) {
         this.engine = engine;
@@ -48,6 +51,8 @@ public class GameScreen implements Screen {
         camera         = new OrthographicCamera();
         playerRenderer = new PlayerRenderer();
         font           = new BitmapFont();
+        hudRenderer = new HudRenderer();
+        killAnimation = new AnimationPlayer();
 
         font.setColor(Color.WHITE);
         camera.setToOrtho(false, 800, 480);
@@ -75,14 +80,56 @@ public class GameScreen implements Screen {
             inputHandler.handleGameInput(snapshot, delta);
             snapshot = engine.getSnapshot();
 
-            PlayerView nearbyCorpse = inputHandler.handleReportInput(snapshot);
+            if (inputHandler.didKillThisFrame()) {
+                killAnimation.play("animations/kill/", "Dead", 33);
+                inputHandler.resetKillFlag(); // ← reset explícito
+            }
+
+            // ✅ Solo procesar reporte si seguimos en IN_GAME
+            PlayerView nearbyCorpse = null;
+            if (snapshot.getState() == GameState.IN_GAME) {
+                nearbyCorpse = inputHandler.handleReportInput(snapshot);
+            }
 
             ScreenUtils.clear(0, 0, 0, 1);
             renderGameplay(snapshot);
             renderBloodOverlay();
 
+            // ✅ HUD de botones — siempre visible en IN_GAME
+            batch.getProjectionMatrix().setToOrtho2D(0, 0,
+                Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+            hudRenderer.draw(batch, inputHandler.isKillReady(), nearbyCorpse != null, delta, inputHandler.getKillCooldown());
+
+            // ✅ HUD de reporte — solo si hay cadáver cerca
             if (nearbyCorpse != null) {
                 drawReportHUD();
+            }
+
+            boolean killHappended = inputHandler.didKillThisFrame();
+            inputHandler.handleGameInput(snapshot, delta); // ← resetea el flag aquí
+            snapshot = engine.getSnapshot();
+
+            // ✅ Procesar clicks en botones HUD
+            inputHandler.handleHudClick(hudRenderer, snapshot);
+
+            if(killHappended){
+                killAnimation.play("animations/kill/", "Dead", 33);
+            }
+
+            if (killAnimation.isPlaying()) {
+                killAnimation.update(delta);
+
+                // ✅ Usar proyección de mundo (camera) no de pantalla
+                batch.setProjectionMatrix(camera.combined);
+                batch.begin();
+
+                Position killPos = inputHandler.getKillPosition();
+                if (killPos != null) {
+                    killAnimation.drawAtPosition(batch,
+                        killPos.x(), killPos.y(),
+                        50f); // tamaño en unidades de mundo
+                }
+                batch.end();
             }
 
         } else if (snapshot.getState() == GameState.MEETING) {
@@ -94,6 +141,7 @@ public class GameScreen implements Screen {
     // ── Renderizado del juego ─────────────────────────────────
 
     private void renderGameplay(GameSnapshot snapshot) {
+        // 1. Centrar cámara sobre el jugador local
         PlayerView me = findLocalPlayer(snapshot);
         if (me != null) {
             camera.position.set(me.getPosition().x(), me.getPosition().y(), 0);
@@ -103,18 +151,35 @@ public class GameScreen implements Screen {
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
 
+        // 2. Dibujar mapa
         batch.draw(mapa, 0, 0, 5000, 4600);
 
+        // 3. Capa de muertos — se dibuja primero para quedar debajo de los vivos
         for (PlayerView pv : snapshot.getPlayers()) {
             if (!pv.isAlive()) {
+
+                // ✅ Ocultar cadáver si la animación de muerte está activa sobre él
+                // Mientras anima, el sprite estático se esconde para evitar superposición
+                if (killAnimation.isPlaying() && inputHandler.getKillPosition() != null) {
+                    float dist = com.badlogic.gdx.math.Vector2.dst(
+                        pv.getPosition().x(), pv.getPosition().y(),
+                        inputHandler.getKillPosition().x(),
+                        inputHandler.getKillPosition().y()
+                    );
+                    if (dist < 80f) continue; // cadáver oculto durante la animación
+                }
+
                 playerRenderer.draw(batch,
                     pv.getPosition().x(), pv.getPosition().y(),
                     pv.getId(), 1, false, false, pv.getSkinColor());
             }
         }
 
+        // 4. Capa de vivos — se dibuja encima de los muertos
         for (PlayerView pv : snapshot.getPlayers()) {
             if (pv.isAlive()) {
+                // El jugador local usa la dirección del InputHandler (más responsiva)
+                // Los demás usan la dirección que viene del snapshot
                 boolean isMe   = pv.getId().equals(myPlayerId);
                 int     dir    = isMe ? inputHandler.getDireccion() : pv.getDirection();
                 boolean moving = pv.isMoving();
@@ -125,6 +190,21 @@ public class GameScreen implements Screen {
             }
         }
 
+        batch.end();
+
+        // 5. Nombres de jugadores — segunda pasada sobre la cámara de mundo
+        // Se dibuja en un batch separado para evitar conflictos de proyección
+        batch.setProjectionMatrix(camera.combined);
+        batch.begin();
+        for (PlayerView pv : snapshot.getPlayers()) {
+            if (pv.isAlive()) {
+                // El jugador local se muestra como "Tú" para identificación rápida
+                String nombre = pv.getId().equals(myPlayerId) ? "Tú" : pv.getName();
+                font.draw(batch, nombre,
+                    pv.getPosition().x() - 10,
+                    pv.getPosition().y() + 60);
+            }
+        }
         batch.end();
     }
 
@@ -262,5 +342,6 @@ public class GameScreen implements Screen {
         pixelRojo.dispose();
         font.dispose();
         playerRenderer.dispose();
+        killAnimation.dispose();
     }
 }

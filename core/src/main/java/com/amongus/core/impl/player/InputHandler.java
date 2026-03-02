@@ -6,6 +6,7 @@ import com.amongus.core.impl.actions.*;
 import com.amongus.core.impl.engine.GameEngine;
 import com.amongus.core.model.Position;
 import com.amongus.core.view.GameSnapshot;
+import com.amongus.core.view.HudRenderer;
 import com.amongus.core.view.PlayerView;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
@@ -41,6 +42,11 @@ public class InputHandler {
     private float bloodOverlay = 0;
     private float shakeTimer   = 0;
 
+    //Animation Kill
+
+    private boolean killHappenedThisFrame = false;
+    private Position killPosition = null; //guardar la posición de la kill para ahi mostrar la animación
+
 
     public InputHandler(ActionSender actionSender, GameEngine engine, PlayerId localPlayerId) {
         this.actionSender  = actionSender;
@@ -60,7 +66,7 @@ public class InputHandler {
     }
 
     private void handleMovement() {
-        int speed = 5;
+        int speed = 3;
         float dx = 0, dy = 0;
 
         if (Gdx.input.isKeyPressed(Input.Keys.A)) { dx -= speed; direccion = -1; }
@@ -83,8 +89,15 @@ public class InputHandler {
         }
     }
 
+    // ── Tecla Kill ────────────────────────────────────────────
     private void handleKillInput(GameSnapshot snapshot) {
         if (!Gdx.input.isKeyJustPressed(keyKill)) return;
+        if (killCooldown > 0) return;
+        executeKill(snapshot);
+    }
+
+    // ── Lógica de kill reutilizable (tecla + click) ───────────
+    public void executeKill(GameSnapshot snapshot) {
         if (killCooldown > 0) return;
 
         PlayerView me = findLocalPlayer(snapshot);
@@ -103,8 +116,32 @@ public class InputHandler {
                 bloodOverlay = 0.6f;
                 shakeTimer   = 0.2f;
                 killCooldown = KILL_COOLDOWN;
+                killPosition = new Position((int)pv.getPosition().x(), (int)pv.getPosition().y());
+                killHappenedThisFrame = true;
+
                 break;
             }
+        }
+    }
+
+    // ── Lógica de reporte reutilizable (tecla + click) ────────
+    public void executeReport(GameSnapshot snapshot) {
+        if (snapshot.getState() != com.amongus.core.api.state.GameState.IN_GAME) return;
+        PlayerView nearbyCorpse = detectNearbyCorpse(snapshot);
+        if (nearbyCorpse != null) {
+            reporterId       = localPlayerId;
+            reportedCorpseId = nearbyCorpse.getId();
+            actionSender.send(new ReportAction(localPlayerId, nearbyCorpse.getId()));
+        }
+    }
+
+    // ── Click en botones HUD ──────────────────────────────────
+    public void handleHudClick(HudRenderer hud, GameSnapshot snapshot) {
+        if (hud.isKillClicked()) {
+            executeKill(snapshot);   // ✅ directo, sin verificar tecla
+        }
+        if (hud.isReportClicked()) {
+            executeReport(snapshot); // ✅ directo, sin verificar tecla
         }
     }
 
@@ -113,11 +150,8 @@ public class InputHandler {
         PlayerView nearbyCorpse = detectNearbyCorpse(snapshot);
 
         if (nearbyCorpse != null && Gdx.input.isKeyJustPressed(keyReport)) {
-            reporterId       = localPlayerId;
-            reportedCorpseId = nearbyCorpse.getId();
-            actionSender.send(new ReportAction(localPlayerId, nearbyCorpse.getId()));
+            executeReport(snapshot);
         }
-
         return nearbyCorpse;
     }
 
@@ -175,10 +209,15 @@ public class InputHandler {
             .findFirst().orElse(null);
     }
 
+
+
     public int      getDireccion()        { return direccion;    }
     public float    getBloodOverlay()     { return bloodOverlay; }
     public PlayerId getReporterId()       { return reporterId;   }
     public PlayerId getReportedCorpseId() { return reportedCorpseId; }
+    public float getKillCooldown(){return killCooldown ;}
+    public Position getKillPosition() { return killPosition; }
+    public boolean didKillThisFrame() { return killHappenedThisFrame; }
 
     //Seters para teclas
 
@@ -186,4 +225,12 @@ public class InputHandler {
     public void setKeyReport(int key)      { this.keyReport      = key; }
     public void setKeySkip(int key)        { this.keySkip        = key; }
     public void setKeyVoteConfirm(int key) { this.keyVoteConfirm = key; }
+
+    public boolean isKillReady() {
+        return killCooldown <= 0;
+    }
+
+    public void resetKillFlag() {
+        killHappenedThisFrame = false;
+    }
 }
