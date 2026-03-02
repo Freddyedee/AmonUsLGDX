@@ -9,6 +9,7 @@ import com.amongus.core.impl.player.InputHandler;
 import com.amongus.core.view.GameSnapshot;
 import com.amongus.core.view.PlayerRenderer;
 import com.amongus.core.view.PlayerView;
+import com.amongus.core.view.TaskView;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.Color;
@@ -16,6 +17,8 @@ import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
+import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.ScreenUtils;
 
 public class GameScreen implements Screen {
@@ -29,6 +32,9 @@ public class GameScreen implements Screen {
     private OrthographicCamera camera;
     private PlayerRenderer playerRenderer;
     private BitmapFont font;
+
+    //para Task
+    private ShapeRenderer shapeRenderer;
 
     // ── Recursos visuales ─────────────────────────────────────
     private Texture mapa;
@@ -48,6 +54,9 @@ public class GameScreen implements Screen {
         camera         = new OrthographicCamera();
         playerRenderer = new PlayerRenderer();
         font           = new BitmapFont();
+
+        //task
+        shapeRenderer = new ShapeRenderer();
 
         font.setColor(Color.WHITE);
         camera.setToOrtho(false, 800, 480);
@@ -79,6 +88,7 @@ public class GameScreen implements Screen {
 
             ScreenUtils.clear(0, 0, 0, 1);
             renderGameplay(snapshot);
+            renderProgressBar(snapshot);
             renderBloodOverlay();
 
             if (nearbyCorpse != null) {
@@ -102,29 +112,28 @@ public class GameScreen implements Screen {
 
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
-
         batch.draw(mapa, 0, 0, 5000, 4600);
 
         for (PlayerView pv : snapshot.getPlayers()) {
             if (!pv.isAlive()) {
-                playerRenderer.draw(batch,
-                    pv.getPosition().x(), pv.getPosition().y(),
+                playerRenderer.draw(batch, pv.getPosition().x(), pv.getPosition().y(),
                     pv.getId(), 1, false, false);
             }
         }
+        batch.end();
 
+        renderTasks(snapshot);   // ← entre los dos batch
+
+        batch.begin();
         for (PlayerView pv : snapshot.getPlayers()) {
             if (pv.isAlive()) {
                 boolean isMe   = pv.getId().equals(myPlayerId);
                 int     dir    = isMe ? inputHandler.getDireccion() : pv.getDirection();
                 boolean moving = pv.isMoving();
-
-                playerRenderer.draw(batch,
-                    pv.getPosition().x(), pv.getPosition().y(),
+                playerRenderer.draw(batch, pv.getPosition().x(), pv.getPosition().y(),
                     pv.getId(), dir, moving, true);
             }
         }
-
         batch.end();
     }
 
@@ -206,6 +215,84 @@ public class GameScreen implements Screen {
         batch.end();
     }
 
+
+    // ── Pantalla de Tasks ───────────────────────────────────
+
+    private void renderTasks(GameSnapshot snapshot) {
+        PlayerView me = findLocalPlayer(snapshot);
+
+        shapeRenderer.setProjectionMatrix(camera.combined);
+
+        for (TaskView tv : snapshot.getTasks()) {
+            float x = tv.getPosition().x();
+            float y = tv.getPosition().y();
+
+            float dist = (me != null)
+                ? Vector2.dst(me.getPosition().x(), me.getPosition().y(), x, y)
+                : Float.MAX_VALUE;
+            boolean nearby     = dist <= 150f;
+            boolean completed  = tv.isCompleted();
+
+            shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+            if (completed) {
+                shapeRenderer.setColor(0.4f, 0.4f, 0.4f, 0.7f); // gris = completada
+            } else {
+                shapeRenderer.setColor(nearby ? Color.YELLOW : new Color(0.8f, 0.8f, 0f, 0.7f));
+            }
+            shapeRenderer.circle(x, y, 20);
+            shapeRenderer.end();
+
+            shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
+            shapeRenderer.setColor(completed ? Color.DARK_GRAY : (nearby ? Color.WHITE : Color.YELLOW));
+            shapeRenderer.circle(x, y, 30);
+            shapeRenderer.end();
+        }
+        System.out.println("[renderTasks] tareas en snapshot: " + snapshot.getTasks().size());
+    }
+
+    private void renderProgressBar(GameSnapshot snapshot) {
+        int total     = snapshot.getTotalTasks();
+        int completed = snapshot.getCompletedTasks();
+        if (total == 0) return;
+
+        float progress  = (float) completed / total;
+        float barWidth  = 200f;
+        float barHeight = 16f;
+        float x         = 20f;
+        float y         = Gdx.graphics.getHeight() - 40f;
+
+        // ← Forzar proyección de PANTALLA, no del mundo
+        com.badlogic.gdx.math.Matrix4 screenMatrix = new com.badlogic.gdx.math.Matrix4()
+            .setToOrtho2D(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+
+        shapeRenderer.setProjectionMatrix(screenMatrix);
+
+        // Fondo gris
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        shapeRenderer.setColor(0.3f, 0.3f, 0.3f, 1f);
+        shapeRenderer.rect(x, y, barWidth, barHeight);
+
+        // Relleno verde
+        shapeRenderer.setColor(0.2f, 0.8f, 0.2f, 1f);
+        shapeRenderer.rect(x, y, barWidth * progress, barHeight);
+        shapeRenderer.end();
+
+        // Borde blanco
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
+        shapeRenderer.setColor(Color.WHITE);
+        shapeRenderer.rect(x, y, barWidth, barHeight);
+        shapeRenderer.end();
+
+        // Texto — también en coordenadas de pantalla
+        batch.setProjectionMatrix(screenMatrix);
+        batch.begin();
+        font.draw(batch, "Tareas: " + completed + "/" + total, x, y + barHeight + 16f);
+        batch.end();
+
+        // Restaurar proyección del mundo para el siguiente frame
+        batch.setProjectionMatrix(camera.combined);
+    }
+
     // ── Pantalla de fin de juego ───────────────────────────────
 
     private void renderEndGame() {
@@ -262,5 +349,8 @@ public class GameScreen implements Screen {
         pixelRojo.dispose();
         font.dispose();
         playerRenderer.dispose();
+
+        //Task
+        shapeRenderer.dispose();
     }
 }

@@ -4,5 +4,6 @@ public enum ActionType {
     MOVE,
     KILL,
     REPORT,
-    VOTE
+    VOTE,
+    TASK
 }

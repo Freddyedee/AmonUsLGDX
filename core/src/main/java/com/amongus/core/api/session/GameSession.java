@@ -145,6 +145,10 @@ public interface GameSession {
     List<Task> getTasksForPlayer(PlayerId playerId);
 
     void initiateTask(PlayerId localPlayerId, TaskId taskId);
+
+    TaskProgressTracker getProgressTracker();
+
+    boolean isTaskCompleted(PlayerId localPlayerId, TaskId id);
 }
 
 

@@ -1,6 +1,6 @@
 package com.amongus.core.impl.minigame;
 
-import com.amongus.core.FirstScreen;
+import com.amongus.core.GameScreen;
 import com.amongus.core.api.events.TaskCompletedEvent;
 import com.amongus.core.api.minigame.MinigameScreen;
 import com.amongus.core.api.player.PlayerId;
@@ -76,7 +76,7 @@ public abstract class AbstractMinigameScreen implements MinigameScreen {
 
     @Override
     public void cancel() {
-        FirstScreen main = engine.getMainScreen();
+        GameScreen main = engine.getMainScreen();
         if (main != null) {
             ((Game) Gdx.app.getApplicationListener()).setScreen(main);
         }

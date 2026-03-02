@@ -11,6 +11,7 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.math.Vector2;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -53,6 +54,8 @@ public class InputHandler {
         updateTimers(delta);
         handleKillInput(engine.getSnapshot());
         handleReportInput(engine.getSnapshot());
+        //TaskImput
+        handleTaskInput(engine.getSnapshot());
     }
 
     public void handleMeetingInput(GameSnapshot snapshot) {
@@ -161,6 +164,23 @@ public class InputHandler {
             Optional<PlayerId> expelled = engine.resolveVoting();
             expelled.ifPresent(id -> System.out.println("[RESULTADO] Expulsado: " + id));
         }
+    }
+
+    //AÑADIDO BOTON DE E PARA INTERACCION CON TASK
+    private void handleTaskInput(GameSnapshot snapshot) {
+        if (!Gdx.input.isKeyJustPressed(Input.Keys.E)) return;
+
+        PlayerView me = findLocalPlayer(snapshot);
+        if (me == null) return;
+
+        snapshot.getTasks().stream()
+            .filter(tv -> Vector2.dst(
+                me.getPosition().x(), me.getPosition().y(),
+                tv.getPosition().x(), tv.getPosition().y()) <= 150f)
+            .min(Comparator.comparingDouble(tv -> Vector2.dst(
+                me.getPosition().x(), me.getPosition().y(),
+                tv.getPosition().x(), tv.getPosition().y())))
+            .ifPresent(tv -> actionSender.send(new TaskAction(localPlayerId, tv.getId())));
     }
 
     private void updateTimers(float delta) {

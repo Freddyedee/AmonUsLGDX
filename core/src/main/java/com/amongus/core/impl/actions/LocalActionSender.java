@@ -24,6 +24,8 @@ public class LocalActionSender implements ActionSender {
             case REPORT -> engine.reportBody(action.getPlayerId(), ((ReportAction) action).getCorpseId());
 
             case VOTE   -> engine.castVote(new VoteImpl(action.getPlayerId(), ((VoteAction) action).getTargetId()));
+
+            case TASK -> engine.initiateTask(((TaskAction) action).getTaskId());
         }
     }
 }

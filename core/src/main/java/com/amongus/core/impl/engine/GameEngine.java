@@ -9,6 +9,7 @@ import com.amongus.core.api.player.Player;
 import com.amongus.core.api.player.PlayerId;
 import com.amongus.core.api.player.Role;
 import com.amongus.core.api.session.GameSession;
+import com.amongus.core.api.session.TaskProgressTracker;
 import com.amongus.core.api.state.GameState;
 import com.amongus.core.api.task.Task;
 import com.amongus.core.api.task.TaskId;
@@ -62,6 +63,8 @@ public class GameEngine {
         this.gameMap = new SimpleMap();
         this.session = new GameSessionImpl(sessionId, eventBus, gameMap, this);
 
+
+
     }
 
     /* ===================== CONSULTAS ===================== */
@@ -80,17 +83,27 @@ public class GameEngine {
 
         // NUEVO: Obtenemos las tareas del jugador local
         List<Task> playerTasks = session.getTasksForPlayer(localPlayerId);
+        System.out.println("[getSnapshot] tareas para " + localPlayerId + ": " + playerTasks.size());
 
         // Convertimos a TaskView para la UI
         List<TaskView> taskViews = playerTasks.stream()
-            .map(TaskView::new)
+            .map(t -> {
+                boolean done = session.isTaskCompleted(localPlayerId, t.getId());
+                return new TaskView(t, done);
+            })
             .toList();
+
+        TaskProgressTracker tracker = session.getProgressTracker();
+        int total     = (tracker != null) ? tracker.getTotal()     : 0;
+        int completed = (tracker != null) ? tracker.getCompleted() : 0;
 
         return new GameSnapshot(
             session.getCurrentState(),
             playerViews,
             localPlayerId,
-            taskViews                     // ← 4º parámetro
+            taskViews,
+            total,      // ← nuevo
+            completed   // ← nuevo
         );
     }
 
@@ -119,10 +132,10 @@ public class GameEngine {
         Player player = new PlayerImpl(newId, name);
         session.addPlayer(player);
 
-        // El primer jugador que spawneamos en esta instancia será el local
         if (this.localPlayerId == null) {
             this.localPlayerId = newId;
         }
+        System.out.println("[spawnPlayer] nombre=" + name + " id=" + newId + " localPlayerId=" + localPlayerId);
         return newId;
     }
 

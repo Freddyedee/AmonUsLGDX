@@ -8,6 +8,7 @@ import com.amongus.core.api.player.Player;
 import com.amongus.core.api.player.PlayerId;
 import com.amongus.core.api.player.Role;
 import com.amongus.core.api.session.GameSession;
+import com.amongus.core.api.session.TaskProgressTracker;
 import com.amongus.core.api.state.GameState;
 import com.amongus.core.api.task.Task;
 import com.amongus.core.api.task.TaskId;
@@ -67,6 +68,8 @@ public class GameSessionImpl implements GameSession {
 
     private final TaskFactory taskFactory;
 
+    private TaskProgressTracker progressTracker;
+
     /**
      * Tareas asignadas a los jugadores.
      * No todas las partidas las usan de inmediato,
@@ -111,6 +114,23 @@ public class GameSessionImpl implements GameSession {
         this.completedTaskIdsByPlayer = new HashMap<>();
 
         this.currentVotes = new HashMap<>();
+
+        eventBus.subscribe(TaskCompletedEvent.class, event -> {
+            // Mover la tarea de asignadas a completadas
+            PlayerId pid = event.getPlayerId();
+            TaskId   tid = event.getTaskId();
+
+            assignedTaskIdsByPlayer.getOrDefault(pid, new HashSet<>()).remove(tid);
+            completedTaskIdsByPlayer.computeIfAbsent(pid, k -> new HashSet<>()).add(tid);
+
+            // Actualizar progreso global
+            if (progressTracker != null) {
+                progressTracker.taskCompleted();
+                System.out.println("[progreso] pendientes: " + progressTracker.getPending()
+                    + "/" + progressTracker.getTotal());
+            }
+        });
+
     }
 
     // --------------------------------------------------
@@ -155,8 +175,8 @@ public class GameSessionImpl implements GameSession {
         // 1. Definir posiciones hardcodeadas para las tareas
         List<Position> taskPositions = List.of(
             new Position(600, 500),   // ← al lado del spawn del jugador
-            new Position(1200, 2800),
-            new Position(1200, 2800)
+            new Position(600, 550),
+            new Position(600, 600)
         );
 
         // 2. Crear las tareas y registrarlas en allTasks
@@ -175,6 +195,14 @@ public class GameSessionImpl implements GameSession {
                 assignedTaskIdsByPlayer.put(player.getId(), ids);
             }
         }
+        // Contar total: suma de tareas por cada crewmate
+        int total = assignedTaskIdsByPlayer.values().stream()
+            .mapToInt(Set::size)
+            .sum();
+        this.progressTracker = new TaskProgressTracker(total);
+        System.out.println("[startGame] total tareas globales: " + total);
+        System.out.println("[startGame] allTasks creadas: " + allTasks.size());
+        System.out.println("[startGame] asignaciones: " + assignedTaskIdsByPlayer);
 
         eventBus.publish(new GameStartedEvent(sessionId));
     }
@@ -306,6 +334,9 @@ public class GameSessionImpl implements GameSession {
     }
 
 
+    /* ============================================================
+       TAREAS TASK
+   ============================================================ */
     // Devuelve las tareas pendientes del jugador
     @Override
     public List<Task> getTasksForPlayer(PlayerId playerId) {
@@ -348,6 +379,14 @@ public class GameSessionImpl implements GameSession {
         ((Game) Gdx.app.getApplicationListener()).setScreen(screen);
         eventBus.publish(new TaskInteractionStartedEvent(playerId, task.getId()));
     }
+
+    public boolean isTaskCompleted(PlayerId playerId, TaskId taskId) {
+        return completedTaskIdsByPlayer
+            .getOrDefault(playerId, Set.of())
+            .contains(taskId);
+    }
+
+    public TaskProgressTracker getProgressTracker() { return progressTracker; }
 
 /* ============================================================
        MÉTODOS AUXILIARES (PRIVADOS)

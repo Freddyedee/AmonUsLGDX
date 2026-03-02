@@ -12,12 +12,16 @@ public final class GameSnapshot {
     private final List<PlayerView> players;
     private final PlayerId localPlayerId; // Para saber a quién sigue la cámara
     private final List<TaskView> tasks;
+    private final int totalTasks;
+    private final int completedTasks;
 
-    public GameSnapshot(GameState state, List<PlayerView> players, PlayerId localPlayerId, List<TaskView> tasks) {
+    public GameSnapshot(GameState state, List<PlayerView> players, PlayerId localPlayerId, List<TaskView> tasks, int totalTasks, int completedTasks) {
         this.state = state;
         this.players = List.copyOf(players);
         this.localPlayerId = localPlayerId;
         this.tasks = List.copyOf(tasks);
+        this.totalTasks = totalTasks;
+        this.completedTasks = completedTasks;
     }
 
     public GameState getState() {
@@ -37,4 +41,11 @@ public final class GameSnapshot {
         return tasks;
     }
 
+    public int getTotalTasks() {
+        return totalTasks;
+    }
+
+    public int getCompletedTasks() {
+        return completedTasks;
+    }
 }

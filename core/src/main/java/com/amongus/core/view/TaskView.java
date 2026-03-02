@@ -8,10 +8,12 @@ public final class TaskView {
 
     private final TaskId id;
     private final Position position;
+    private final boolean completed;
 
-    public TaskView(Task task) {
+    public TaskView(Task task, boolean completed) {
         this.id = task.getId();
         this.position = task.getPosition();
+        this.completed = completed;
     }
 
     public TaskId getId() {
@@ -21,4 +23,6 @@ public final class TaskView {
     public Position getPosition() {
         return position;
     }
+
+    public boolean isCompleted() { return completed; }
 }

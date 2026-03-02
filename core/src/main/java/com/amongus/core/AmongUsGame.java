@@ -34,7 +34,7 @@ public class AmongUsGame extends Game {
 
         engine.assignRole(testPlayer, Role.CREWMATE);
         engine.assignRole(jugador3, Role.CREWMATE);
-        engine.assignRole(myPlayerId, Role.IMPOSTOR);
+        engine.assignRole(myPlayerId, Role.CREWMATE);
 
         engine.startGame();
 
@@ -44,8 +44,9 @@ public class AmongUsGame extends Game {
 
 
         // 3. Finalmente ponemos la pantalla
-        setScreen(new GameScreen(engine));
-        engine.setMainScreen(GameScreen);
+        GameScreen gameScreen = new GameScreen(engine);
+        setScreen(gameScreen);
+        engine.setMainScreen(gameScreen);
     }
     @Override
     public void dispose(){
