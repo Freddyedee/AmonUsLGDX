@@ -1,7 +1,7 @@
 package com.amongus.core.impl.engine;
 
 
-import com.amongus.core.FirstScreen;
+import com.amongus.core.GameScreen;
 import com.amongus.core.api.Vote.Vote;
 import com.amongus.core.api.events.EventBus;
 import com.amongus.core.api.map.GameMap;
@@ -19,8 +19,11 @@ import com.amongus.core.view.GameSnapshot;
 import com.amongus.core.view.PlayerView;
 import com.amongus.core.impl.player.PlayerImpl;
 import com.amongus.core.view.TaskView;
+import com.amongus.core.impl.voting.VotingSystemImpl;
+import com.badlogic.gdx.math.Interpolation;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -43,14 +46,15 @@ import java.util.UUID;
 
 public class GameEngine {
 
-    private FirstScreen mainScreen;
+    private GameScreen mainScreen;
 
     private final UUID sessionId;
     private final EventBus eventBus;
     private final GameSession session;
     private final GameMap gameMap;
     private PlayerId localPlayerId;
-
+    private final VotingSystemImpl votingSystem = new VotingSystemImpl();
+    private String gameResult = null;
 
     public GameEngine(){
         this.sessionId = UUID.randomUUID();
@@ -65,7 +69,7 @@ public class GameEngine {
     public GameSnapshot getSnapshot() {
         List<PlayerView> playerViews = session.getPlayers().stream()
             .map(p -> {
-                PlayerView view = new PlayerView(p.getId(), p.alive(), p.getPosition());
+                PlayerView view = new PlayerView(p.getId(), p.alive(), p.getPosition(), p.getName());
                 if (p instanceof PlayerImpl pi) {
                     view.setMoving(pi.isMoving());
                     view.setDirection(pi.getDirection());
@@ -189,6 +193,7 @@ public class GameEngine {
 
     public void castVote(Vote vote) {
         session.castVote(vote);
+        votingSystem.castVote(vote);
     }
 
     // Nuevo: para reportar cuerpos desde la UI
@@ -200,11 +205,47 @@ public class GameEngine {
         return localPlayerId;
     }
 
-    public void setMainScreen(FirstScreen screen) {
+    public void setMainScreen(GameScreen screen) {
         this.mainScreen = screen;
     }
 
-    public FirstScreen getMainScreen() {
+    public GameScreen getMainScreen() {
         return mainScreen;
+    }
+    //Votación
+
+    public Optional<PlayerId> resolveVoting(){
+        Optional<PlayerId> expelled = votingSystem.resolve();
+
+        //Si alguien fue votado por ende lo matamos
+        expelled.ifPresent(id->{
+            session.getPlayers().stream()
+                    .filter(p->p.getId().equals(id)).findFirst().ifPresent(Player::kill);
+            System.out.println("[VOTACION] Expulsado: " + id);
+            });
+
+        session.resolveVoting();
+
+        //CONDICION DE VICTORIA
+
+        //Verificación
+
+        long alive = session.getPlayers().stream().filter(Player::alive).count();
+        long impostors = session.getPlayers().stream().filter(Player::alive)
+                                .filter(p->p.getRole() == Role.IMPOSTOR).count();
+
+        if(impostors >= alive - impostors){
+            gameResult = "IMPOSTOR";
+            System.out.println("[FIN] El impostor gana!");
+        }else if(impostors == 0){
+            gameResult = "CREWMATE";
+            System.out.println("[FIN] los crewmates gana!");
+        }
+
+        return expelled;
+    }
+
+    public String getGameResult() {
+        return gameResult;
     }
 }
