@@ -2,55 +2,56 @@ package com.amongus.core;
 
 import com.amongus.core.api.player.PlayerId;
 import com.amongus.core.api.player.Role;
+import com.amongus.core.impl.engine.GameEngine;
 import com.amongus.core.model.Position;
 import com.badlogic.gdx.Game;
-import com.amongus.core.impl.engine.GameEngine;
 
 /**
  * Punto de entrada del juego para LibGDX.
  *
- * Esta clase NO contiene lógica del juego.
- * Su única responsabilidad es:
- *  - Inicializar el motor del juego (GameEngine)
- *  - Delegar el ciclo de vida a LibGDX
+ * <p>Responsabilidad única: inicializar el {@link GameEngine}, registrar
+ * jugadores y delegar el ciclo de vida a {@link GameScreen}.
  *
- * La lógica vive exclusivamente en core/impl.
+ * <p>No contiene lógica de juego. Toda la lógica vive en {@code core/impl}.
+ *
+ * <p>TODO: reemplazar la configuración manual por una pantalla de lobby.
+ * El enunciado exige mínimo 5 jugadores para iniciar partida y asignación
+ * aleatoria de roles.
  */
-
-/** {@link com.badlogic.gdx.ApplicationListener} implementation shared by all platforms. */
-
 public class AmongUsGame extends Game {
 
     private GameEngine engine;
 
     @Override
     public void create() {
-        this.engine = new GameEngine();
+        engine = new GameEngine();
 
-        // 1. Spawneamos a los jugadores primero (Estado: LOBBY)
-        PlayerId myPlayerId = engine.spawnPlayer("Local Player"); // Este será el tuyo (myPlayerId)
-        PlayerId testPlayer = engine.spawnPlayer("test Player"); // Este será el tuyo (myPlayerId)
-        PlayerId jugador3 = engine.spawnPlayer("Jugador 3");
+        // ── Registro de jugadores (temporal — reemplazar con pantalla de lobby) ──
+        PlayerId localPlayer = engine.spawnPlayer("Local Player");
+        PlayerId jugador2    = engine.spawnPlayer("Jugador 2");
+        PlayerId jugador3    = engine.spawnPlayer("Jugador 3");
+        PlayerId jugador4    = engine.spawnPlayer("Jugador 4");
+        PlayerId jugador5    = engine.spawnPlayer("Jugador 5");
+        PlayerId jugador6    = engine.spawnPlayer("Jugador 6");
 
-        engine.assignRole(testPlayer, Role.CREWMATE);
-        engine.assignRole(jugador3, Role.CREWMATE);
-        engine.assignRole(myPlayerId, Role.IMPOSTOR);
+        // ── Asignación de roles (temporal — debe ser aleatoria en producción) ──
+        engine.assignRolesRandomly();
 
         engine.startGame();
 
-        engine.movePlayer(myPlayerId, new Position(500, 500));
-        engine.movePlayer(testPlayer, new Position(350, 350));
-        engine.movePlayer(jugador3, new Position(800, 800));
+        // ── Posiciones iniciales en el mapa ───────────────────────────────────
+        engine.movePlayer(localPlayer, new Position(500, 500));
+        engine.movePlayer(jugador2,    new Position(500, 520));
+        engine.movePlayer(jugador3,    new Position(800, 800));
+        engine.movePlayer(jugador4,    new Position(850, 700));
+        engine.movePlayer(jugador5,    new Position(860, 750));
+        engine.movePlayer(jugador6,    new Position(870, 780));
 
-
-        // 3. Finalmente ponemos la pantalla
         setScreen(new GameScreen(engine));
     }
+
     @Override
-    public void dispose(){
+    public void dispose() {
         super.dispose();
     }
-
 }
-
-

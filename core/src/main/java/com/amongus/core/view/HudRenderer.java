@@ -41,7 +41,8 @@ public class HudRenderer {
         font.setColor(Color.WHITE);
     }
 
-    public void draw(SpriteBatch batch, boolean killReady, boolean reportReady, float delta, float killCooldown) {
+    public void draw(SpriteBatch batch, boolean killReady, boolean reportReady, float delta, float killCooldown,
+                     boolean isImpostor) {
 
         // Actualizar fade del report
         reportAlpha = reportReady
@@ -57,9 +58,11 @@ public class HudRenderer {
         batch.begin();
 
         // ── Botón KILL ────────────────────────────────────────
-        float killBrightness = killReady ? 1f : 0.35f;
-        batch.setColor(killBrightness, killBrightness, killBrightness, 1f);
-        batch.draw(btnKill, killX, BUTTON_Y, BUTTON_SIZE, BUTTON_SIZE);
+        if(isImpostor) {
+            float killBrightness = killReady ? 1f : 0.35f;
+            batch.setColor(killBrightness, killBrightness, killBrightness, 1f);
+            batch.draw(btnKill, killX, BUTTON_Y, BUTTON_SIZE, BUTTON_SIZE);
+            }
 
         // ── Botón REPORT — aparece solo si hay cadáver cerca ──
         if (reportAlpha > 0f) {

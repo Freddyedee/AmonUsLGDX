@@ -15,8 +15,7 @@ public final class PlayerRenderer implements Disposable {
     private Texture[] sprites;
     private Texture deadTexture;
 
-
-    // Un timer y frame POR jugador, no compartido
+        // Un timer y frame POR jugador, no compartido
     private final Map<PlayerId, Float> timers = new HashMap<>();
     private final Map<PlayerId, Integer> frames = new HashMap<>();
 
@@ -37,8 +36,6 @@ public final class PlayerRenderer implements Disposable {
 
         deadTexture = new Texture("sprites/player/dead/DeadAmong.png");
     }
-
-
 
     public void draw(SpriteBatch batch, float x, float y, PlayerId id, int dir, boolean moving, boolean isAlive,
                      SkinColor skinColor) {
