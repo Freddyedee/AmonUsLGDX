@@ -167,7 +167,7 @@ public class GameEngine {
     public void startGame() {
         if(session.getPlayers().size() < 5){
             throw new IllegalStateException(
-                "Se necesitan minimo 5 jugadores para iniciar. " + "Actuale: " + session.getPlayers().size());
+                "Se necesitan minimo 5 jugadores para iniciar. " + "Actuales: " + session.getPlayers().size());
         }
         session.startGame();
     }
