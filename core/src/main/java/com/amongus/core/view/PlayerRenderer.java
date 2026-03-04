@@ -1,6 +1,8 @@
 package com.amongus.core.view;
 
 import com.amongus.core.api.player.PlayerId;
+import com.amongus.core.api.player.SkinColor;
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.utils.Disposable;
@@ -13,8 +15,7 @@ public final class PlayerRenderer implements Disposable {
     private Texture[] sprites;
     private Texture deadTexture;
 
-
-    // Un timer y frame POR jugador, no compartido
+        // Un timer y frame POR jugador, no compartido
     private final Map<PlayerId, Float> timers = new HashMap<>();
     private final Map<PlayerId, Integer> frames = new HashMap<>();
 
@@ -26,22 +27,23 @@ public final class PlayerRenderer implements Disposable {
 
     private void loadTextures() {
         // Cargamos el idle
-        sprites[0] = new Texture("sprites/idle.png");
+        sprites[0] = new Texture("sprites/player/body/idle.png");
         // Cargamos la caminata
         for (int i = 1; i <= 12; i++) {
             String num = String.format("%04d", i);
-            sprites[i] = new Texture("sprites/Walk" + num + ".png");
+            sprites[i] = new Texture("sprites/player/body/walkcolor" + num + ".png");
         }
 
-        deadTexture = new Texture("sprites/DeadAmong.png");
+        deadTexture = new Texture("sprites/player/dead/DeadAmong.png");
     }
 
-
-
-    public void draw(SpriteBatch batch, float x, float y, PlayerId id, int dir, boolean moving, boolean isAlive) {
+    public void draw(SpriteBatch batch, float x, float y, PlayerId id, int dir, boolean moving, boolean isAlive,
+                     SkinColor skinColor) {
 
         if (!isAlive) {
+            batch.setColor(skinColor.getColor());   //Cadaver con el color del jugador.
             batch.draw(deadTexture, x, y, 50, 50);
+            batch.setColor(Color.WHITE); //reset de estado de color.
             return;
         }
 

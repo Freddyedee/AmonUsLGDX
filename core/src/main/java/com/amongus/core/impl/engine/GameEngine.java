@@ -1,159 +1,195 @@
 package com.amongus.core.impl.engine;
 
-
 import com.amongus.core.api.Vote.Vote;
 import com.amongus.core.api.events.EventBus;
 import com.amongus.core.api.map.GameMap;
 import com.amongus.core.api.player.Player;
 import com.amongus.core.api.player.PlayerId;
 import com.amongus.core.api.player.Role;
+import com.amongus.core.api.player.SkinColor;
 import com.amongus.core.api.session.GameSession;
 import com.amongus.core.api.state.GameState;
 import com.amongus.core.impl.event.EventBusImpl;
 import com.amongus.core.impl.map.SimpleMap;
+import com.amongus.core.impl.player.ColorAssigner;
+import com.amongus.core.impl.player.PlayerImpl;
 import com.amongus.core.impl.session.GameSessionImpl;
+import com.amongus.core.impl.voting.VotingSystemImpl;
 import com.amongus.core.view.GameSnapshot;
 import com.amongus.core.view.PlayerView;
-import com.amongus.core.impl.player.PlayerImpl;
-import com.amongus.core.impl.voting.VotingSystemImpl;
-import com.badlogic.gdx.math.Interpolation;
 
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 
 /**
- * GameEngine es la FACHADA del Core.
+ * Fachada principal del core del juego.
  *
- * Es el punto de entrada único para interactuar con el dominio del juego.
- * Los módulos externos (Application, Desktop, Multiplayer) SOLO deben
- * comunicarse con el Core a través de esta clase.
+ * <p>Único punto de entrada para que los módulos externos (UI, red, persistencia)
+ * interactúen con el dominio. Ningún módulo externo debe conocer las clases internas.
  *
- * Responsabilidades:
- *  - Crear y mantener una sesión de juego
- *  - Exponer operaciones de alto nivel (casos de uso)
- *  - Delegar la lógica real a GameSession
- *  - Gestionar el EventBus
+ * <p>Responsabilidades:
+ * <ul>
+ *   <li>Crear y mantener la sesión de juego</li>
+ *   <li>Exponer operaciones de alto nivel (casos de uso)</li>
+ *   <li>Delegar la lógica real a {@link GameSession}</li>
+ *   <li>Gestionar el {@link EventBus}</li>
+ * </ul>
  *
- * Importante:
- *  - NO contiene reglas complejas
- *  - NO conoce detalles de UI, red o persistencia
+ * <p>No contiene reglas de negocio complejas ni conoce detalles de UI o red.
  */
-
 public class GameEngine {
 
-    private final UUID sessionId;
-    private final EventBus eventBus;
-    private final GameSession session;
-    private final GameMap gameMap;
-    private PlayerId localPlayerId;
+    // ── Infraestructura ───────────────────────────────────────────────
+    private final UUID          sessionId;
+    private final EventBus      eventBus;
+    private final GameSession   session;
+    private final GameMap       gameMap;
+    private final ColorAssigner colorAssigner = new ColorAssigner();
+
+    // ── Sistemas de dominio ───────────────────────────────────────────
     private final VotingSystemImpl votingSystem = new VotingSystemImpl();
-    private String gameResult = null;
 
-    public GameEngine(){
-        this.sessionId = UUID.randomUUID();
-        this.eventBus = new EventBusImpl();
-        this.gameMap = new SimpleMap();
-        this.session = new GameSessionImpl(sessionId, eventBus, gameMap);
+    // ── Estado global ─────────────────────────────────────────────────
+    private PlayerId localPlayerId = null;
+    private String   gameResult    = null;
 
+    // ══════════════════════════════════════════════════════════════════
+    //  CONSTRUCTOR
+    // ══════════════════════════════════════════════════════════════════
+
+    public GameEngine() {
+        sessionId = UUID.randomUUID();
+        eventBus  = new EventBusImpl();
+        gameMap   = new SimpleMap();
+        session   = new GameSessionImpl(sessionId, eventBus, gameMap);
     }
 
-    /* ===================== CONSULTAS ===================== */
+    // ══════════════════════════════════════════════════════════════════
+    //  CONSULTAS
+    // ══════════════════════════════════════════════════════════════════
 
+    /**
+     * Devuelve una instantánea inmutable del estado actual del juego.
+     * La UI solo debe leer desde aquí — nunca modificar el estado directamente.
+     *
+     * @return snapshot con el estado y la lista de {@link PlayerView}
+     */
     public GameSnapshot getSnapshot() {
-        List<PlayerView> playerViews = session.getPlayers().stream()
+        List<PlayerView> views = session.getPlayers().stream()
             .map(p -> {
-                PlayerView view = new PlayerView(p.getId(), p.alive(), p.getPosition(), p.getName());
+                SkinColor color = (p instanceof PlayerImpl pi)
+                    ? pi.getSkinColor() : SkinColor.WHITE;
+                PlayerView view = new PlayerView(
+                    p.getId(), p.alive(), p.getPosition(), p.getName(), color);
                 if (p instanceof PlayerImpl pi) {
                     view.setMoving(pi.isMoving());
                     view.setDirection(pi.getDirection());
+                    view.setRole(pi.getRole());
                 }
                 return view;
             })
             .toList();
 
-        return new GameSnapshot(session.getCurrentState(), playerViews, localPlayerId);
-    }
-    public EventBus getEventBus() {
-        return eventBus;
+        return new GameSnapshot(session.getCurrentState(), views, localPlayerId);
     }
 
-    public GameState getGameState() {
-        return session.getCurrentState();
-    }
+    /** @return bus de eventos para suscribirse a cambios del juego */
+    public EventBus getEventBus() { return eventBus; }
 
-    /* ===================== CASOS DE USO ===================== */
+    /** @return estado actual de la sesión (LOBBY, IN_GAME, MEETING, ENDED) */
+    public GameState getGameState() { return session.getCurrentState(); }
 
     /**
-     * Crea y une a un jugador automáticamente.
-     * Así la UI no tiene que conocer PlayerImpl.
+     * @return {@code "IMPOSTOR"} si ganó el impostor, {@code "CREWMATE"} si
+     *         ganaron los crewmates, {@code null} si la partida sigue en curso
      */
-    // Modifica tu spawnPlayer así:
+    public String getGameResult() { return gameResult; }
+
+    /** @return ID del jugador controlado por este cliente */
+    public PlayerId getLocalPlayerId() { return localPlayerId; }
+
+    // ══════════════════════════════════════════════════════════════════
+    //  GESTIÓN DE JUGADORES
+    // ══════════════════════════════════════════════════════════════════
+
+    /**
+     * Registra un nuevo jugador con color asignado automáticamente.
+     * El primer jugador registrado se convierte en el jugador local.
+     *
+     * @param name nombre visible en pantalla
+     * @return ID único asignado al jugador
+     */
     public PlayerId spawnPlayer(String name) {
-        PlayerId newId = PlayerId.random();
-        Player player = new PlayerImpl(newId, name);
-        session.addPlayer(player);
-
-        // El primer jugador que spawneamos en esta instancia será el local
-        if (this.localPlayerId == null) {
-            this.localPlayerId = newId;
-        }
-        return newId;
+        PlayerId id    = PlayerId.random();
+        SkinColor color = colorAssigner.assign();
+        session.addPlayer(new PlayerImpl(id, name, color));
+        if (localPlayerId == null) localPlayerId = id;
+        return id;
     }
 
-    public void assignRole(PlayerId playerId, Role role){
-        Player player = session.getPlayers().stream()
+    /**
+     * Asigna un rol a un jugador existente.
+     *
+     * @param playerId jugador a asignar
+     * @param role     {@link Role#IMPOSTOR} o {@link Role#CREWMATE}
+     */
+    public void assignRole(PlayerId playerId, Role role) {
+        session.getPlayers().stream()
             .filter(p -> p.getId().equals(playerId))
-            .findFirst().orElse(null);
+            .filter(p -> p instanceof PlayerImpl)
+            .map(p -> (PlayerImpl) p)
+            .findFirst()
+            .ifPresent(pi -> pi.assignRole(role));
+    }
 
-        if(player instanceof  PlayerImpl){
-            ((PlayerImpl) player).assignRole(role);
+    /**
+     * Asigna roles aleatoriamente entre los jugadores registrados.
+     * Garantiza exactamente 1 impostor por partida.
+     * Debe llamarse antes de startGame().
+     */
+    public void assignRolesRandomly() {
+        List<Player> players = new ArrayList<>(session.getPlayers());
+        Collections.shuffle(players);
+
+        // El primero tras el shuffle es el impostor
+        for (int i = 0; i < players.size(); i++) {
+            Role role = (i == 0) ? Role.IMPOSTOR : Role.CREWMATE;
+            if (players.get(i) instanceof PlayerImpl pi) {
+                pi.assignRole(role);
+            }
         }
     }
 
-    //Intentar matar LÓGICA
+    // ══════════════════════════════════════════════════════════════════
+    //  CICLO DE PARTIDA
+    // ══════════════════════════════════════════════════════════════════
 
-    // NUEVO
-    public void requestKill(PlayerId killerId, PlayerId victimId) {
-        Player killer = session.getPlayers().stream()
-            .filter(p -> p.getId().equals(killerId))
-            .findFirst().orElse(null);
-
-        Player victim = session.getPlayers().stream()
-            .filter(p -> p.getId().equals(victimId))
-            .findFirst().orElse(null);
-
-        if (killer == null || victim == null || !killer.alive() || !victim.alive()) {
-            System.out.println("[ENGINE] requestKill RECHAZADO: killer o victim inválido");
-            return;
-        }
-
-        // Validación con el MISMO rango que usas en cliente
-        double distance = Math.hypot(
-
-            killer.getPosition().x() - victim.getPosition().x(),
-            killer.getPosition().y() - victim.getPosition().y()
-        );
-        System.out.println("[ENGINE] Distancia real = " + String.format("%.1f", distance));
-        if (distance <= 150.0) {
-            System.out.println("[ENGINE] → Llamando attemptKill...");
-            session.attemptKill(killerId, victimId);
-            System.out.println("[ENGINE] → attemptKill ejecutado correctamente");
-        }
-        else{
-            System.out.println("[ENGINE] → Distancia demasiado grande, kill rechazado");
-        }
-    }
-
-
+    /** Inicia la partida. Requiere estado LOBBY. */
     public void startGame() {
+        if(session.getPlayers().size() < 5){
+            throw new IllegalStateException(
+                "Se necesitan minimo 5 jugadores para iniciar. " + "Actuales: " + session.getPlayers().size());
+        }
         session.startGame();
     }
 
+    /**
+     * Mueve un jugador a una posición destino.
+     *
+     * @param playerId    jugador a mover
+     * @param destination posición destino ({@link com.amongus.core.model.Position})
+     */
     public void movePlayer(PlayerId playerId, Object destination) {
-       session.movePlayer(playerId, destination);
+        session.movePlayer(playerId, destination);
     }
 
+    /**
+     * Actualiza el estado de movimiento y dirección visual de un jugador.
+     * Usado por el sistema de animaciones del renderer.
+     *
+     * @param id        jugador a actualizar
+     * @param moving    true si se está moviendo
+     * @param direction 1 = derecha, -1 = izquierda
+     */
     public void setPlayerMoving(PlayerId id, boolean moving, int direction) {
         session.getPlayers().stream()
             .filter(p -> p.getId().equals(id))
@@ -166,54 +202,108 @@ public class GameEngine {
             });
     }
 
+    // ══════════════════════════════════════════════════════════════════
+    //  KILL Y REPORTE
+    // ══════════════════════════════════════════════════════════════════
+
+    /**
+     * Intenta ejecutar un kill. Valida que ambos jugadores estén vivos
+     * y dentro del rango permitido (150 unidades).
+     *
+     * @param killerId ID del impostor atacante
+     * @param victimId ID de la víctima objetivo
+     */
+    public void requestKill(PlayerId killerId, PlayerId victimId) {
+        Player killer = findPlayer(killerId);
+        Player victim = findPlayer(victimId);
+
+        if (killer == null || victim == null
+            || !killer.alive() || !victim.alive()) return;
+
+        double dist = Math.hypot(
+            killer.getPosition().x() - victim.getPosition().x(),
+            killer.getPosition().y() - victim.getPosition().y());
+
+        if (dist <= 150.0) {
+            session.attemptKill(killerId, victimId);
+        }
+    }
+
+    /**
+     * Registra el reporte de un cadáver e inicia una reunión de emergencia.
+     *
+     * @param reporterId ID del jugador que reporta
+     * @param victimId   ID del cadáver reportado
+     */
+    public void reportBody(PlayerId reporterId, PlayerId victimId) {
+        session.reportBody(reporterId, victimId);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    //  VOTACIÓN
+    // ══════════════════════════════════════════════════════════════════
+
+    /**
+     * Registra el voto de un jugador. Un voto con {@code target == null} es skip.
+     *
+     * @param vote voto a registrar
+     */
     public void castVote(Vote vote) {
         session.castVote(vote);
         votingSystem.castVote(vote);
     }
 
-    // Nuevo: para reportar cuerpos desde la UI
-    public void reportBody(PlayerId reporterId, PlayerId victimId) {
-        session.reportBody(reporterId, victimId);
-    }
-
-    public PlayerId getLocalPlayerId() {
-        return localPlayerId;
-    }
-
-    //Votación
-
-    public Optional<PlayerId> resolveVoting(){
+    /**
+     * Resuelve la votación, expulsa al jugador más votado (si aplica)
+     * y verifica las condiciones de victoria.
+     *
+     * @return ID del jugador expulsado, o {@link Optional#empty()} si hubo empate o skip
+     */
+    public Optional<PlayerId> resolveVoting() {
         Optional<PlayerId> expelled = votingSystem.resolve();
 
-        //Si alguien fue votado por ende lo matamos
-        expelled.ifPresent(id->{
+        expelled.ifPresent(id -> {
             session.getPlayers().stream()
-                    .filter(p->p.getId().equals(id)).findFirst().ifPresent(Player::kill);
-            System.out.println("[VOTACION] Expulsado: " + id);
-            });
+                .filter(p -> p.getId().equals(id))
+                .findFirst()
+                .ifPresent(Player::kill);
+        });
 
         session.resolveVoting();
-
-        //CONDICION DE VICTORIA
-
-        //Verificación
-
-        long alive = session.getPlayers().stream().filter(Player::alive).count();
-        long impostors = session.getPlayers().stream().filter(Player::alive)
-                                .filter(p->p.getRole() == Role.IMPOSTOR).count();
-
-        if(impostors >= alive - impostors){
-            gameResult = "IMPOSTOR";
-            System.out.println("[FIN] El impostor gana!");
-        }else if(impostors == 0){
-            gameResult = "CREWMATE";
-            System.out.println("[FIN] los crewmates gana!");
-        }
-
+        checkVictoryConditions();
         return expelled;
     }
 
-    public String getGameResult() {
-        return gameResult;
+    // ══════════════════════════════════════════════════════════════════
+    //  LÓGICA INTERNA
+    // ══════════════════════════════════════════════════════════════════
+
+    /**
+     * Evalúa las condiciones de victoria tras cada kill o expulsión.
+     * <ul>
+     *   <li>Impostores ganan si {@code impostors >= crewmates vivos}</li>
+     *   <li>Crewmates ganan si no quedan impostores vivos</li>
+     * </ul>
+     */
+    private void checkVictoryConditions() {
+        long alive     = session.getPlayers().stream()
+            .filter(Player::alive).count();
+        long impostors = session.getPlayers().stream()
+            .filter(Player::alive)
+            .filter(p -> p.getRole() == Role.IMPOSTOR)
+            .count();
+
+        if (impostors >= alive - impostors) {
+            gameResult = "IMPOSTOR";
+        } else if (impostors == 0) {
+            gameResult = "CREWMATE";
+        }
+    }
+
+    /** Busca un jugador por ID en la sesión actual. */
+    private Player findPlayer(PlayerId id) {
+        return session.getPlayers().stream()
+            .filter(p -> p.getId().equals(id))
+            .findFirst().orElse(null);
     }
 }
