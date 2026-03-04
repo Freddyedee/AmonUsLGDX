@@ -9,11 +9,13 @@ public final class TaskView {
     private final TaskId id;
     private final Position position;
     private final boolean completed;
+    private final String mapSpritePath;
 
     public TaskView(Task task, boolean completed) {
         this.id = task.getId();
         this.position = task.getPosition();
         this.completed = completed;
+        this.mapSpritePath = task.getMapSpritePath();
     }
 
     public TaskId getId() {
@@ -25,4 +27,6 @@ public final class TaskView {
     }
 
     public boolean isCompleted() { return completed; }
+
+    public String getMapSpritePath() { return mapSpritePath; }
 }

@@ -6,10 +6,7 @@ import com.amongus.core.api.state.GameState;
 import com.amongus.core.impl.actions.LocalActionSender;
 import com.amongus.core.impl.engine.GameEngine;
 import com.amongus.core.impl.player.InputHandler;
-import com.amongus.core.view.GameSnapshot;
-import com.amongus.core.view.PlayerRenderer;
-import com.amongus.core.view.PlayerView;
-import com.amongus.core.view.TaskView;
+import com.amongus.core.view.*;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.Color;
@@ -36,6 +33,13 @@ public class GameScreen implements Screen {
     //para Task
     private ShapeRenderer shapeRenderer;
 
+    //minijuegos
+    private final java.util.Map<String, com.badlogic.gdx.graphics.Texture> taskSprites = new java.util.HashMap<>();
+
+
+    //Flecha de Task
+    private TaskArrowRenderer taskArrowRenderer;
+
     // ── Recursos visuales ─────────────────────────────────────
     private Texture mapa;
     private Texture pixelRojo;
@@ -57,6 +61,9 @@ public class GameScreen implements Screen {
 
         //task
         shapeRenderer = new ShapeRenderer();
+
+        //flecha
+        taskArrowRenderer = new TaskArrowRenderer();
 
         font.setColor(Color.WHITE);
         camera.setToOrtho(false, 800, 480);
@@ -87,8 +94,27 @@ public class GameScreen implements Screen {
             PlayerView nearbyCorpse = inputHandler.handleReportInput(snapshot);
 
             ScreenUtils.clear(0, 0, 0, 1);
+
             renderGameplay(snapshot);
+
+            if (engine.getActiveMinigame() != null) {
+                renderMinigameOverlay(engine.getActiveMinigame(), delta);
+                return; // no procesar input de juego mientras hay minijuego abierto
+            }
+
+            //Barra de progreso
             renderProgressBar(snapshot);
+
+            // Flechas — necesita batch con proyección de pantalla
+            com.badlogic.gdx.math.Matrix4 screenMatrix = new com.badlogic.gdx.math.Matrix4()
+                .setToOrtho2D(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+            batch.setProjectionMatrix(screenMatrix);
+            batch.begin();
+            taskArrowRenderer.draw(batch, snapshot, myPlayerId,
+                Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), camera);
+            batch.end();
+            batch.setProjectionMatrix(camera.combined); // restaurar
+
             renderBloodOverlay();
 
             if (nearbyCorpse != null) {
@@ -228,26 +254,97 @@ public class GameScreen implements Screen {
             float y = tv.getPosition().y();
 
             float dist = (me != null)
-                ? Vector2.dst(me.getPosition().x(), me.getPosition().y(), x, y)
+                ? com.badlogic.gdx.math.Vector2.dst(
+                me.getPosition().x(), me.getPosition().y(), x, y)
                 : Float.MAX_VALUE;
-            boolean nearby     = dist <= 150f;
-            boolean completed  = tv.isCompleted();
 
-            shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-            if (completed) {
-                shapeRenderer.setColor(0.4f, 0.4f, 0.4f, 0.7f); // gris = completada
+            boolean nearby    = dist <= 150f;
+            boolean completed = tv.isCompleted();
+
+            String spritePath = tv.getMapSpritePath();
+
+            if (spritePath != null) {
+                // ── Tarea con sprite propio (ej: botellón) ────────
+                // Cargar la textura si no está en caché
+                taskSprites.computeIfAbsent(spritePath,
+                    path -> new com.badlogic.gdx.graphics.Texture(path));
+
+                com.badlogic.gdx.graphics.Texture tex = taskSprites.get(spritePath);
+
+                // Tamaño fijo 60x60 en el mundo (ajusta a tu gusto)
+                float size = 200f;
+
+                batch.setProjectionMatrix(camera.combined);
+                batch.begin();
+
+                if (completed) {
+                    batch.setColor(0.4f, 0.4f, 0.4f, 0.7f);  // gris si completada
+                } else if (nearby) {
+                    batch.setColor(1f, 1f, 0.5f, 1f);         // tinte amarillo si cerca
+                } else {
+                    batch.setColor(1f, 1f, 1f, 1f);            // normal
+                }
+
+                batch.draw(tex, x - size / 2f, y - size / 2f, size, size);
+                batch.setColor(1f, 1f, 1f, 1f);
+                batch.end();
+
+                // Outline amarillo cuando estás cerca y no está completada
+                if (nearby && !completed) {
+                    shapeRenderer.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Line);
+                    shapeRenderer.setColor(com.badlogic.gdx.graphics.Color.YELLOW);
+                    shapeRenderer.circle(x, y, size / 2f + 8f);
+                    shapeRenderer.end();
+                }
+
             } else {
-                shapeRenderer.setColor(nearby ? Color.YELLOW : new Color(0.8f, 0.8f, 0f, 0.7f));
-            }
-            shapeRenderer.circle(x, y, 20);
-            shapeRenderer.end();
+                // ── Tarea sin sprite: círculo amarillo por defecto ─
+                shapeRenderer.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Filled);
+                if (completed) {
+                    shapeRenderer.setColor(0.4f, 0.4f, 0.4f, 0.7f);
+                } else {
+                    shapeRenderer.setColor(nearby
+                        ? com.badlogic.gdx.graphics.Color.YELLOW
+                        : new com.badlogic.gdx.graphics.Color(0.8f, 0.8f, 0f, 0.7f));
+                }
+                shapeRenderer.circle(x, y, 20);
+                shapeRenderer.end();
 
-            shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
-            shapeRenderer.setColor(completed ? Color.DARK_GRAY : (nearby ? Color.WHITE : Color.YELLOW));
-            shapeRenderer.circle(x, y, 30);
-            shapeRenderer.end();
+                shapeRenderer.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Line);
+                shapeRenderer.setColor(completed
+                    ? com.badlogic.gdx.graphics.Color.DARK_GRAY
+                    : (nearby ? com.badlogic.gdx.graphics.Color.WHITE
+                    : com.badlogic.gdx.graphics.Color.YELLOW));
+                shapeRenderer.circle(x, y, 30);
+                shapeRenderer.end();
+            }
         }
-        System.out.println("[renderTasks] tareas en snapshot: " + snapshot.getTasks().size());
+    }
+
+
+    //minigameScren
+    private void renderMinigameOverlay(
+        com.amongus.core.api.minigame.MinigameScreen minigame, float delta) {
+
+        // 1. Overlay oscuro semitransparente sobre el mapa
+        com.badlogic.gdx.math.Matrix4 screenMatrix = new com.badlogic.gdx.math.Matrix4()
+            .setToOrtho2D(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+
+        batch.setProjectionMatrix(screenMatrix);
+        batch.begin();
+        batch.setColor(0f, 0f, 0f, 0.6f);   // negro al 60% de opacidad
+        batch.draw(pixelRojo,                // reutilizamos el pixel como rect sólido
+            0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+        batch.setColor(1f, 1f, 1f, 1f);
+        batch.end();
+
+        // 2. Renderizar el minijuego encima
+        minigame.render(delta);
+
+        // 3. Tecla ESC para cerrar
+        if (Gdx.input.isKeyJustPressed(com.badlogic.gdx.Input.Keys.ESCAPE)) {
+            minigame.cancel();
+        }
     }
 
     private void renderProgressBar(GameSnapshot snapshot) {
@@ -292,6 +389,8 @@ public class GameScreen implements Screen {
         // Restaurar proyección del mundo para el siguiente frame
         batch.setProjectionMatrix(camera.combined);
     }
+
+
 
     // ── Pantalla de fin de juego ───────────────────────────────
 
@@ -352,5 +451,11 @@ public class GameScreen implements Screen {
 
         //Task
         shapeRenderer.dispose();
+
+        //arrow
+        taskArrowRenderer.dispose();
+
+        //minijuegos
+        taskSprites.values().forEach(com.badlogic.gdx.graphics.Texture::dispose);
     }
 }

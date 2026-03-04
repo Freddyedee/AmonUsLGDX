@@ -18,4 +18,10 @@ public interface Task {
     void interact(PlayerId playerId);
 
     MinigameProvider getMinigameProvider();
+
+    /**
+     * Ruta del sprite que se muestra en el mapa para esta tarea.
+     * Si devuelve null, se usa el círculo amarillo por defecto.
+     */
+    default String getMapSpritePath() { return null; }
 }

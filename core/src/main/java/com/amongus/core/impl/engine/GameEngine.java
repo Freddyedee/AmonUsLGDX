@@ -5,6 +5,7 @@ import com.amongus.core.GameScreen;
 import com.amongus.core.api.Vote.Vote;
 import com.amongus.core.api.events.EventBus;
 import com.amongus.core.api.map.GameMap;
+import com.amongus.core.api.minigame.MinigameScreen;
 import com.amongus.core.api.player.Player;
 import com.amongus.core.api.player.PlayerId;
 import com.amongus.core.api.player.Role;
@@ -23,9 +24,7 @@ import com.amongus.core.view.TaskView;
 import com.amongus.core.impl.voting.VotingSystemImpl;
 import com.badlogic.gdx.math.Interpolation;
 
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * GameEngine es la FACHADA del Core.
@@ -57,6 +56,12 @@ public class GameEngine {
     private final VotingSystemImpl votingSystem = new VotingSystemImpl();
     private String gameResult = null;
 
+    //para pantalla de minijuego
+    private MinigameScreen activeMinigame = null;
+
+    // Flag de debug — cambiar a false para activar roles aleatorios
+    private static final boolean DEBUG_ROLES = true;
+
     public GameEngine(){
         this.sessionId = UUID.randomUUID();
         this.eventBus = new EventBusImpl();
@@ -82,7 +87,7 @@ public class GameEngine {
             .toList();
 
         // NUEVO: Obtenemos las tareas del jugador local
-        List<Task> playerTasks = session.getTasksForPlayer(localPlayerId);
+        List<Task> playerTasks = session.getAllTasksForPlayer(localPlayerId);
         System.out.println("[getSnapshot] tareas para " + localPlayerId + ": " + playerTasks.size());
 
         // Convertimos a TaskView para la UI
@@ -185,6 +190,10 @@ public class GameEngine {
 
 
     public void startGame() {
+        if (!DEBUG_ROLES) {
+            assignRolesRandomly();  // ← producción
+        }
+        // Si DEBUG_ROLES=true, los roles asignados manualmente en AmongUsGame se respetan
         session.startGame();
     }
 
@@ -261,4 +270,29 @@ public class GameEngine {
     public String getGameResult() {
         return gameResult;
     }
+
+    private void assignRolesRandomly() {
+        List<Player> playerList = new ArrayList<>(session.getPlayers());
+        Collections.shuffle(playerList);
+
+        // Calcular número de impostores según cantidad de jugadores
+        int totalPlayers = playerList.size();
+        int numImpostors = totalPlayers >= 7 ? 2 : 1;
+
+        for (int i = 0; i < playerList.size(); i++) {
+            Role role = (i < numImpostors) ? Role.IMPOSTOR : Role.CREWMATE;
+            assignRole(playerList.get(i).getId(), role);
+        }
+
+        System.out.println("[assignRoles] impostores: " + numImpostors
+            + " de " + totalPlayers + " jugadores");
+    }
+
+    //getter y setters de minigame
+    public void setActiveMinigame(MinigameScreen screen) {
+        this.activeMinigame = screen;
+        if (screen != null) screen.show();
+    }
+    public MinigameScreen getActiveMinigame() { return activeMinigame; }
+    public void clearActiveMinigame()        { this.activeMinigame = null; }
 }

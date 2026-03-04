@@ -1,0 +1,13 @@
+minijuegoBotellon.png
+size:1024,512
+repeat:none
+Panel_water_outline
+bounds:2,2,291,401
+panel_water_bg
+bounds:295,21,266,382
+water_buttonDown
+bounds:563,266,205,137
+water_buttonUp
+bounds:563,127,205,137
+waterfill
+bounds:770,212,136,191

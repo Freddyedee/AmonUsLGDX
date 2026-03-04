@@ -50,6 +50,9 @@ public class InputHandler {
     }
 
     public void handleGameInput(GameSnapshot snapshot, float delta) {
+        // ── Bloquear TODO el input de juego si hay minijuego activo ──
+        if (engine.getActiveMinigame() != null) return;
+
         handleMovement();
         updateTimers(delta);
         handleKillInput(engine.getSnapshot());

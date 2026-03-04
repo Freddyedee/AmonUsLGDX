@@ -1,35 +1,49 @@
 package com.amongus.core.impl.minigame;
 
-
 import com.amongus.core.api.player.PlayerId;
 import com.amongus.core.api.task.Task;
 import com.amongus.core.impl.engine.GameEngine;
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Input;
 import com.badlogic.gdx.graphics.Color;
-import com.badlogic.gdx.graphics.Pixmap;
-import com.badlogic.gdx.graphics.Texture;
-import com.badlogic.gdx.graphics.g2d.BitmapFont;
-import com.badlogic.gdx.scenes.scene2d.Actor;
-import com.badlogic.gdx.scenes.scene2d.Stage;
-import com.badlogic.gdx.scenes.scene2d.ui.Label;
-import com.badlogic.gdx.scenes.scene2d.ui.Skin;
-import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
-import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
-import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
-import com.badlogic.gdx.utils.Align;
-import com.badlogic.gdx.utils.viewport.ScreenViewport;
+import com.badlogic.gdx.graphics.g2d.TextureAtlas;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-
+/**
+ * Minijuego: Pulsar números del 1 al 10 en orden ascendente.
+ *
+ * Sprites del atlas basicNumber:
+ *  - reactorPanel        → pantalla azul de fondo (izquierda)
+ *  - reactorButton01-10  → botones individuales (82x82 px)
+ *
+ * Estados de cada botón:
+ *  - Normal   → tinte blanco (color original del sprite)
+ *  - Correcto → tinte verde
+ *  - Error    → tinte rojo por un instante, luego reset a blanco
+ */
 public class NumberCodeMinigameScreen extends AbstractMinigameScreen {
 
-    private Stage stage;
-    private Skin skin;                  // Skin para estilos de UI (botones, labels)
-    private Label progressLabel;        // Muestra progreso: "Next: 4 / 10"
-    private final List<TextButton> numberButtons = new ArrayList<>();
-    private int currentExpected = 1;    // El siguiente número que debe pulsar (empieza en 1)
+    // ── Atlas ─────────────────────────────────────────────────
+    private TextureAtlas atlas;
+    private TextureRegion reactorPanel;
+    private TextureRegion[] buttonRegions; // índice 0 = botón "1", índice 9 = botón "10"
+
+    // ── Estado ────────────────────────────────────────────────
+    private int   currentExpected = 1;          // próximo número a pulsar
+    private Color[] buttonColors;               // color actual de cada botón
+    private float errorTimer = 0f;              // tiempo mostrando error (rojo)
+    private static final float ERROR_DURATION = 0.4f;
+    private boolean showingError = false;
+
+    // ── Layout (calculado en show relativo al panel base) ─────
+    private float[] btnX, btnY;
+    private float btnSize;
+
+    // ── Orden visual de los botones en la cuadrícula ──────────
+    // El atlas tiene: 04,01,03,05,02 / 07,09,06,08,10
+    // Queremos mostrarlos mezclados visualmente (como Among Us)
+    // pero el número lógico es el índice+1
+    private static final int[] VISUAL_ORDER = {4, 1, 3, 5, 2, 7, 9, 6, 8, 10};
 
     public NumberCodeMinigameScreen(GameEngine engine, PlayerId playerId, Task task) {
         super(engine, playerId, task);
@@ -37,156 +51,144 @@ public class NumberCodeMinigameScreen extends AbstractMinigameScreen {
 
     @Override
     public void show() {
-        super.show();
+        super.show(); // carga taskBackground, calcula panelX/Y/W/H
 
-        stage = new Stage(new ScreenViewport());
-        Gdx.input.setInputProcessor(stage);
+        atlas = new TextureAtlas(Gdx.files.internal("minijuegos/basicNumber/basicNumber.atlas"));
+        reactorPanel = atlas.findRegion("reactorPanel");
 
-        skin = new Skin();
-        BitmapFont font = new BitmapFont();
-        skin.add("default-font", font);
-
-        // 1. LabelStyle
-        Label.LabelStyle labelStyle = new Label.LabelStyle();
-        labelStyle.font = font;
-        labelStyle.fontColor = Color.WHITE;
-        skin.add("default", labelStyle);
-
-        // 2. TextButtonStyle
-        Pixmap pm = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
-
-        pm.setColor(Color.DARK_GRAY); pm.fill();
-        TextureRegionDrawable upDrawable = new TextureRegionDrawable(new Texture(pm));
-
-        pm.setColor(Color.GRAY); pm.fill();
-        TextureRegionDrawable downDrawable = new TextureRegionDrawable(new Texture(pm));
-
-        pm.setColor(Color.LIGHT_GRAY); pm.fill();
-        TextureRegionDrawable overDrawable = new TextureRegionDrawable(new Texture(pm));
-
-        pm.dispose();
-
-        TextButton.TextButtonStyle buttonStyle = new TextButton.TextButtonStyle();
-        buttonStyle.font = font;
-        buttonStyle.fontColor = Color.WHITE;
-        buttonStyle.up   = upDrawable;
-        buttonStyle.down = downDrawable;
-        buttonStyle.over = overDrawable;
-        skin.add("default", buttonStyle);
-
-        // 3. Ahora sí crear la UI
-        createUI();
-        randomizeButtonPositions();
-    }
-
-    private void createUI() {
-        float screenWidth = Gdx.graphics.getWidth();
-        float screenHeight = Gdx.graphics.getHeight();
-
-        // Label de instrucción (arriba)
-        // Instrucción: "Click in ascending order"
-        Label instructionLabel = new Label("Click the numbers in ascending order", skin);
-        instructionLabel.setFontScale(1.5f);
-        instructionLabel.setPosition(screenWidth / 2f, screenHeight - 100, Align.center);
-        stage.addActor(instructionLabel);
-
-        // Label de progreso (debajo del título)
-        progressLabel = new Label("Next: 1 / 10", skin);
-        progressLabel.setFontScale(1.2f);
-        progressLabel.setPosition(screenWidth / 2f, screenHeight - 180, Align.center);
-        stage.addActor(progressLabel);
-
-        // Crear los 10 botones (1 al 10)
-        TextButton.TextButtonStyle style = skin.get("default", TextButton.TextButtonStyle.class);
-        for (int i = 1; i <= 10; i++) {
-            TextButton button = new TextButton(String.valueOf(i), style);
-            button.setSize(120, 120); // Tamaño de cada botón
-
-            // Listener para cuando se pulsa
-            final int number = i;
-            button.addListener(new ChangeListener() {
-                @Override
-                public void changed(ChangeEvent event, Actor actor) {
-                    onNumberClicked(number);
-                }
-            });
-
-            numberButtons.add(button);
-            stage.addActor(button);
-        }
-    }
-
-    private void randomizeButtonPositions() {
-        // Mezclar la lista de botones para orden aleatorio
-        Collections.shuffle(numberButtons);
-
-        float screenWidth = Gdx.graphics.getWidth();
-        float screenHeight = Gdx.graphics.getHeight();
-
-        // Grid 2 filas x 5 columnas
-        float buttonSize = 120;
-        float spacing = 40;
-        float startX = (screenWidth - (5 * buttonSize + 4 * spacing)) / 2f;
-        float startYTop = screenHeight / 2f + 50;    // Fila superior
-        float startYBottom = screenHeight / 2f - 170; // Fila inferior
-
-        int index = 0;
-        // Fila superior (5 botones)
-        for (int col = 0; col < 5; col++) {
-            TextButton btn = numberButtons.get(index++);
-            btn.setPosition(startX + col * (buttonSize + spacing), startYTop);
+        // Cargar botones en el orden visual definido
+        buttonRegions = new TextureRegion[10];
+        buttonColors  = new Color[10];
+        for (int i = 0; i < 10; i++) {
+            String name = String.format("reactorButton%02d", VISUAL_ORDER[i]);
+            buttonRegions[i] = atlas.findRegion(name);
+            buttonColors[i]  = new Color(Color.WHITE);
         }
 
-        // Fila inferior (5 botones)
-        for (int col = 0; col < 5; col++) {
-            TextButton btn = numberButtons.get(index++);
-            btn.setPosition(startX + col * (buttonSize + spacing), startYBottom);
-        }
+        calculateLayout();
     }
 
-    private void onNumberClicked(int clickedNumber) {
-        if (clickedNumber == currentExpected) {
-            // Acierto
-            currentExpected++;
-            progressLabel.setText("Next: " + currentExpected + " / 10");
+    private void calculateLayout() {
+        // ── El panel interior se divide en dos zonas ──────────
+        // Izquierda: reactorPanel (pantalla azul) ~40% del ancho
+        // Derecha:   cuadrícula 5x2 de botones    ~55% del ancho
 
-            if (currentExpected > 10) {
-                complete(); // ¡Victoria!
-            }
-        } else {
-            // Fallo: reiniciar contador
-            currentExpected = 1;
-            progressLabel.setText("Error! Starting over... Next: 1 / 10");
+        float innerPad = panelW * 0.04f;  // padding interior del taskBackground
 
-            // Aquí podrías añadir efectos: shake de pantalla, sonido, etc.
+        // Zona de botones: 5 columnas, 2 filas, sin apenas separación
+        float gridW = panelW * 0.52f;
+        float gridH = panelH * 0.72f;
+
+        float gridX = panelX + panelW * 0.24f;  // empieza después del panel azul
+        float gridY = panelY + (panelH - gridH) / 0.75f;
+
+        // Tamaño de cada botón (casi sin padding entre ellos)
+        float gap  = 2f;
+        btnSize = Math.min((gridW - gap * 4) / 5f, (gridH - gap) / 2f);
+
+        btnX = new float[10];
+        btnY = new float[10];
+
+        for (int i = 0; i < 10; i++) {
+            int col = i % 5;
+            int row = 1 - (i / 5);  // row 1 = arriba, row 0 = abajo
+            btnX[i] = gridX + col * (btnSize + gap);
+            btnY[i] = gridY + row * (btnSize + gap);
         }
     }
 
     @Override
     protected void renderContent(float delta) {
-        stage.act(delta);
-        stage.draw();
+        float sw = Gdx.graphics.getWidth();
+        float sh = Gdx.graphics.getHeight();
+
+        // ── Actualizar timer de error ─────────────────────────
+        if (showingError) {
+            errorTimer -= delta;
+            if (errorTimer <= 0) {
+                resetButtons();
+                showingError = false;
+            }
+        }
+
+        // ── Dibujar panel azul (reactorPanel) ─────────────────
+        float rPanelW = panelW * 0.80f;
+        float rPanelH = panelH * 0.38f;
+        float rPanelX = panelX + panelW * 0.10f;
+        float rPanelY = panelY + (panelH - rPanelH) / 2f;
+        batch.draw(reactorPanel, rPanelX, rPanelY, rPanelW, rPanelH);
+
+        // ── Dibujar botones ───────────────────────────────────
+        for (int i = 0; i < 10; i++) {
+            batch.setColor(buttonColors[i]);
+            batch.draw(buttonRegions[i], btnX[i], btnY[i], btnSize, btnSize);
+        }
+        batch.setColor(Color.WHITE);
+
+        // ── Detectar clic en botones ──────────────────────────
+        if (!showingError && Gdx.input.justTouched()) {
+            float mx = Gdx.input.getX();
+            float my = sh - Gdx.input.getY();  // LibGDX Y invertido
+
+            for (int i = 0; i < 10; i++) {
+                if (mx >= btnX[i] && mx <= btnX[i] + btnSize
+                    && my >= btnY[i] && my <= btnY[i] + btnSize) {
+                    onButtonClicked(i);
+                    break;
+                }
+            }
+        }
+
+        // ── Tecla numérica como alternativa al clic ───────────
+        if (!showingError) {
+            for (int n = 1; n <= 10; n++) {
+                boolean pressed = (n < 10)
+                    ? Gdx.input.isKeyJustPressed(Input.Keys.NUM_0 + n)
+                    : Gdx.input.isKeyJustPressed(Input.Keys.NUM_0);
+                if (pressed) {
+                    // Buscar el botón que corresponde al número n
+                    for (int i = 0; i < 10; i++) {
+                        if (VISUAL_ORDER[i] == n) {
+                            onButtonClicked(i);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    @Override
-    public void resize(int width, int height) {
-        stage.getViewport().update(width, height, true);
-        // Reposicionar elementos si quieres que se adapten al resize
-        randomizeButtonPositions(); // Opcional: reordenar al cambiar tamaño
+    private void onButtonClicked(int buttonIndex) {
+        int clickedNumber = VISUAL_ORDER[buttonIndex];
+
+        if (clickedNumber == currentExpected) {
+            // ── Acierto: poner verde ──────────────────────────
+            buttonColors[buttonIndex] = new Color(0.3f, 1f, 0.3f, 1f);
+            currentExpected++;
+
+            if (currentExpected > 10) {
+                complete();
+            }
+        } else {
+            // ── Error: poner todos en rojo y activar timer ────
+            for (int i = 0; i < 10; i++) {
+                buttonColors[i] = new Color(1f, 0.25f, 0.25f, 1f);
+            }
+            showingError = true;
+            errorTimer   = ERROR_DURATION;
+        }
+    }
+
+    private void resetButtons() {
+        currentExpected = 1;
+        for (int i = 0; i < 10; i++) {
+            buttonColors[i] = new Color(Color.WHITE);
+        }
     }
 
     @Override
     public void dispose() {
-        stage.dispose();
-        skin.dispose();
+        atlas.dispose();
         super.dispose();
-    }
-
-    // Si quieres versión con assets personalizados por número (opcional)
-    private void setCustomBackground(TextButton button, int number) {
-        // Ejemplo: si tienes boton1.png ... boton10.png
-        // Texture tex = new Texture("minigames/boton" + number + ".png");
-        // button.getStyle().up = new TextureRegionDrawable(tex);
-        // (Cargar y dispose en show/dispose)
     }
 }

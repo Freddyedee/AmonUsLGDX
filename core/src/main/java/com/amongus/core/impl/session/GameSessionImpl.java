@@ -20,9 +20,11 @@ import com.badlogic.gdx.Game;
 import com.badlogic.gdx.Gdx;
 
 import java.util.*;
+import java.util.stream.Stream;
 
 public class GameSessionImpl implements GameSession {
 
+    private final GameEngine engine;
 
     /**
      * Identificador único en la partida.
@@ -97,7 +99,8 @@ public class GameSessionImpl implements GameSession {
      * Esto facilita pruebas, reemplazos y extensiones.
      * */
 
-    public GameSessionImpl(UUID sessionId, EventBus eventBus, GameMap gameMap,GameEngine engine){
+    public GameSessionImpl(UUID sessionId, EventBus eventBus, GameMap gameMap, GameEngine engine){
+        this.engine = engine;
         this.sessionId = UUID.randomUUID();
         this.eventBus = eventBus;
         this.gameMap = gameMap;
@@ -166,6 +169,7 @@ public class GameSessionImpl implements GameSession {
      */
     @Override
     public void startGame() {
+        //validacion para ver si hay minimo 5 jugadores
         if (players.size() < 1) {
             throw new IllegalStateException("No hay suficientes jugadores");
         }
@@ -173,16 +177,12 @@ public class GameSessionImpl implements GameSession {
         stateMachine.transitionTo(GameState.IN_GAME);
 
         // 1. Definir posiciones hardcodeadas para las tareas
-        List<Position> taskPositions = List.of(
-            new Position(600, 500),   // ← al lado del spawn del jugador
-            new Position(600, 550),
-            new Position(600, 600)
+        List<Task> tasks = List.of(
+            taskFactory.createNumberTask(new Position(600, 500)),
+            taskFactory.createNumberTask(new Position(1200, 800)),
+            taskFactory.createWiresTask(new Position(800, 600)),  // ← nueva
+            taskFactory.createBotellonTask(new Position(900, 1400))
         );
-
-        // 2. Crear las tareas y registrarlas en allTasks
-        List<Task> tasks = taskPositions.stream()
-            .map(pos -> taskFactory.createNumberTask(pos))
-            .toList();
 
         tasks.forEach(t -> allTasks.put(t.getId(), t));
 
@@ -376,7 +376,7 @@ public class GameSessionImpl implements GameSession {
 
         System.out.println("[initiateTask] ABRIENDO minijuego: " + task.getName());
         MinigameScreen screen = task.getMinigameProvider().createScreen(playerId, task);
-        ((Game) Gdx.app.getApplicationListener()).setScreen(screen);
+        engine.setActiveMinigame(screen);
         eventBus.publish(new TaskInteractionStartedEvent(playerId, task.getId()));
     }
 
@@ -387,6 +387,17 @@ public class GameSessionImpl implements GameSession {
     }
 
     public TaskProgressTracker getProgressTracker() { return progressTracker; }
+
+    public List<Task> getAllTasksForPlayer(PlayerId playerId) {
+        Set<TaskId> assigned  = assignedTaskIdsByPlayer.getOrDefault(playerId, Set.of());
+        Set<TaskId> completed = completedTaskIdsByPlayer.getOrDefault(playerId, Set.of());
+
+        return Stream.concat(assigned.stream(), completed.stream())
+            .distinct()
+            .map(allTasks::get)
+            .filter(Objects::nonNull)
+            .toList();
+    }
 
 /* ============================================================
        MÉTODOS AUXILIARES (PRIVADOS)
