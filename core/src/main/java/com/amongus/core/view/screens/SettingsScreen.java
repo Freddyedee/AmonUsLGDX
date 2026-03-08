@@ -27,7 +27,8 @@ public class SettingsScreen implements Screen {
 
     @Override
     public void show() {
-        stage = new Stage(new ScreenViewport());
+        // FitViewport escala automáticamente toda la UI sin importar si es 800x600 o 1080p
+        stage = new Stage(new FitViewport(1280, 720));
         Gdx.input.setInputProcessor(stage);
 
         // Asegúrate de tener tu archivo JSON de la UI en la ruta correcta
