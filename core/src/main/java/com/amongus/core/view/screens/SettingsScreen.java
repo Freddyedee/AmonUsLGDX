@@ -19,6 +19,7 @@ public class SettingsScreen implements Screen {
     private final AmongUsGame game;
     private Stage stage;
     private Skin skin;
+    private Preferences prefs;
 
     public SettingsScreen(AmongUsGame game) {
         this.game = game;
