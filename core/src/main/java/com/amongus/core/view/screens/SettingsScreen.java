@@ -2,6 +2,7 @@ package com.amongus.core.view.screens;
 
 import com.amongus.core.AmongUsGame;
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Preferences;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
@@ -10,9 +11,10 @@ import com.badlogic.gdx.scenes.scene2d.ui.Label;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
+import com.badlogic.gdx.scenes.scene2d.ui.TextField;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.utils.Align;
-import com.badlogic.gdx.utils.viewport.ScreenViewport;
+import com.badlogic.gdx.utils.viewport.FitViewport;
 
 public class SettingsScreen implements Screen {
 
@@ -31,7 +33,6 @@ public class SettingsScreen implements Screen {
         stage = new Stage(new FitViewport(1280, 720));
         Gdx.input.setInputProcessor(stage);
 
-        // Asegúrate de tener tu archivo JSON de la UI en la ruta correcta
         skin = new Skin(Gdx.files.internal("ui/comic/comic-ui.json"));
 
         // Cargamos las preferencias guardadas (si no existe, usa "Jugador" por defecto)
@@ -52,7 +53,6 @@ public class SettingsScreen implements Screen {
 
         Label resLabel = new Label("Resolucion de Pantalla:", skin);
 
-        // Botones de Resolución
         TextButton btnRes1 = new TextButton("800 x 600 (Ventana)", skin);
         TextButton btnRes2 = new TextButton("1280 x 720 (HD)", skin);
         TextButton btnRes3 = new TextButton("1920 x 1080 (Full HD)", skin);
@@ -61,22 +61,19 @@ public class SettingsScreen implements Screen {
 
         // ── Listeners de Botones ──
         btnRes1.addListener(new ClickListener() {
-            @Override
-            public void clicked(InputEvent event, float x, float y) {
+            @Override public void clicked(InputEvent event, float x, float y) {
                 Gdx.graphics.setWindowedMode(800, 600);
             }
         });
 
         btnRes2.addListener(new ClickListener() {
-            @Override
-            public void clicked(InputEvent event, float x, float y) {
+            @Override public void clicked(InputEvent event, float x, float y) {
                 Gdx.graphics.setWindowedMode(1280, 720);
             }
         });
 
         btnRes3.addListener(new ClickListener() {
-            @Override
-            public void clicked(InputEvent event, float x, float y) {
+            @Override public void clicked(InputEvent event, float x, float y) {
                 Gdx.graphics.setWindowedMode(1920, 1080);
             }
         });
@@ -97,14 +94,18 @@ public class SettingsScreen implements Screen {
         });
 
         // ── Organización visual en la tabla ──
-        table.add(titleLabel).padBottom(40).colspan(2).row();
+        table.add(titleLabel).padBottom(30).colspan(2).row();
 
-        table.add(resLabel).padBottom(20).colspan(2).row();
+        // Agregamos el área de nombre a la tabla
+        table.add(nameLabel).padBottom(5).row();
+        table.add(nameField).width(300).height(50).padBottom(20).row();
+
+        table.add(resLabel).padBottom(10).row();
         table.add(btnRes1).width(300).height(50).padBottom(10).row();
         table.add(btnRes2).width(300).height(50).padBottom(10).row();
-        table.add(btnRes3).width(300).height(50).padBottom(40).row();
+        table.add(btnRes3).width(300).height(50).padBottom(30).row();
 
-        table.add(btnVolver).width(200).height(50).padTop(20);
+        table.add(btnVolver).width(250).height(50).padTop(10);
 
         stage.addActor(table);
     }
