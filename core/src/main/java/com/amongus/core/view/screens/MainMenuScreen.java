@@ -113,6 +113,9 @@ public class MainMenuScreen implements Screen {
         table.add(btnAcercaDe).fillX().uniformX().pad(10);
         table.row();
 
+        table.add(btnSettings).fillX().uniformX().pad(10);
+        table.row();
+
         table.add(btnSalir).fillX().uniformX().pad(10);
 
         // Finalmente, añadimos la tabla al escenario
