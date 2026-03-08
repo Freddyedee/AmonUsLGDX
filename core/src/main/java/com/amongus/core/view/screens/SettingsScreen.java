@@ -84,6 +84,13 @@ public class SettingsScreen implements Screen {
         btnVolver.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
+                // Guardamos el nombre ingresado al darle a volver
+                String newName = nameField.getText().trim();
+                if(newName.isEmpty()) newName = "Jugador"; // Validación para que no quede vacío
+
+                prefs.putString("playerName", newName);
+                prefs.flush(); // Guarda los cambios en disco inmediatamente
+
                 game.setScreen(new MainMenuScreen(game));
                 dispose();
             }
