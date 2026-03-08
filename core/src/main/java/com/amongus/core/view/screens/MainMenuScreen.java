@@ -81,6 +81,17 @@ public class MainMenuScreen implements Screen {
             }
         });
 
+        // Listener para el botón de Configuración / Opciones
+        btnSettings.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                // Cambiamos a la nueva pantalla de ajustes
+                game.setScreen(new SettingsScreen(game));
+                // Destruimos el menú principal para liberar memoria
+                dispose();
+            }
+        });
+
         btnSalir.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
