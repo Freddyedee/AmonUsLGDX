@@ -57,7 +57,7 @@ public class SettingsScreen implements Screen {
         TextButton btnRes2 = new TextButton("1280 x 720 (HD)", skin);
         TextButton btnRes3 = new TextButton("1920 x 1080 (Full HD)", skin);
 
-        TextButton btnVolver = new TextButton("Volver al Menu", skin);
+        TextButton btnVolver = new TextButton("Guardar y Volver", skin);
 
         // ── Listeners para cambiar la resolución ──
         btnRes1.addListener(new ClickListener() {
