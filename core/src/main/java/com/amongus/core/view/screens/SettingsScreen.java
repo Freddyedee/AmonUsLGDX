@@ -45,6 +45,11 @@ public class SettingsScreen implements Screen {
         titleLabel.setFontScale(1.5f);
         titleLabel.setAlignment(Align.center);
 
+        // --- Área del Nombre ---
+        Label nameLabel = new Label("Nombre del Jugador:", skin);
+        TextField nameField = new TextField(prefs.getString("playerName", "Jugador"), skin);
+        nameField.setAlignment(Align.center);
+
         Label resLabel = new Label("Resolucion de Pantalla:", skin);
 
         // Botones de Resolución
