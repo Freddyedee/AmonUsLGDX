@@ -52,6 +52,7 @@ public class MainMenuScreen implements Screen {
         TextButton btnJugar = new TextButton("Jugar", skin);
         TextButton btnAyuda = new TextButton("Ayuda", skin);
         TextButton btnAcercaDe = new TextButton("Acerca de", skin);
+        TextButton btnSettings = new TextButton("Configuracion", skin);
         TextButton btnSalir = new TextButton("Salir", skin);
 
         // ── Agregando funcionalidad (Listeners) ──
