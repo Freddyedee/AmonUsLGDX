@@ -34,6 +34,9 @@ public class SettingsScreen implements Screen {
         // Asegúrate de tener tu archivo JSON de la UI en la ruta correcta
         skin = new Skin(Gdx.files.internal("ui/comic/comic-ui.json"));
 
+        // Cargamos las preferencias guardadas (si no existe, usa "Jugador" por defecto)
+        prefs = Gdx.app.getPreferences("AmongUsPrefs");
+
         Table table = new Table();
         table.setFillParent(true);
 
