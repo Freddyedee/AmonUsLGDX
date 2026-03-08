@@ -59,7 +59,7 @@ public class SettingsScreen implements Screen {
 
         TextButton btnVolver = new TextButton("Guardar y Volver", skin);
 
-        // ── Listeners para cambiar la resolución ──
+        // ── Listeners de Botones ──
         btnRes1.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
