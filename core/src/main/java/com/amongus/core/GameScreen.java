@@ -271,8 +271,9 @@ public class GameScreen implements Screen {
 
                 com.badlogic.gdx.graphics.Texture tex = taskSprites.get(spritePath);
 
-                // Tamaño fijo 60x60 en el mundo (ajusta a tu gusto)
-                float size = 200f;
+                // Tamaño fijo 60x60 en el mundo
+                float targetH = 80f * tv.getMapSpriteScale();  // ← multiplica por el scale
+                float targetW = targetH * ((float) tex.getWidth() / tex.getHeight());
 
                 batch.setProjectionMatrix(camera.combined);
                 batch.begin();
@@ -285,7 +286,7 @@ public class GameScreen implements Screen {
                     batch.setColor(1f, 1f, 1f, 1f);            // normal
                 }
 
-                batch.draw(tex, x - size / 2f, y - size / 2f, size, size);
+                batch.draw(tex, x - targetW / 2f, y - targetH / 2f, targetW, targetH);
                 batch.setColor(1f, 1f, 1f, 1f);
                 batch.end();
 
@@ -293,7 +294,8 @@ public class GameScreen implements Screen {
                 if (nearby && !completed) {
                     shapeRenderer.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Line);
                     shapeRenderer.setColor(com.badlogic.gdx.graphics.Color.YELLOW);
-                    shapeRenderer.circle(x, y, size / 2f + 8f);
+                    float outlineRadius = (80f / 2f) + 8f;
+                    shapeRenderer.circle(x, y, outlineRadius);
                     shapeRenderer.end();
                 }
 

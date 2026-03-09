@@ -1,8 +1,9 @@
-package com.amongus.core.impl.task;
+package com.amongus.core.impl.task.quick;
 
 import com.amongus.core.api.minigame.MinigameProvider;
 import com.amongus.core.api.task.TaskId;
 import com.amongus.core.api.task.TaskType;
+import com.amongus.core.impl.task.BasicTask;
 import com.amongus.core.model.Position;
 
 public class BotellonTask extends BasicTask {
@@ -17,4 +18,7 @@ public class BotellonTask extends BasicTask {
     public String getMapSpritePath() {
         return MAP_SPRITE;
     }
+
+    @Override
+    public float getMapSpriteScale() { return 4.8f; }  // ajusta el tamaño
 }

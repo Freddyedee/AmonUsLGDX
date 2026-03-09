@@ -176,13 +176,31 @@ public class GameSessionImpl implements GameSession {
 
         stateMachine.transitionTo(GameState.IN_GAME);
 
-        // 1. Definir posiciones hardcodeadas para las tareas
-        List<Task> tasks = List.of(
-            taskFactory.createNumberTask(new Position(600, 500)),
-            taskFactory.createNumberTask(new Position(1200, 800)),
-            taskFactory.createWiresTask(new Position(800, 600)),  // ← nueva
-            taskFactory.createBotellonTask(new Position(900, 1400))
+        // Gasolina: devuelve lista de 2 tareas
+        List<Task> gasolineTasks = taskFactory.createGasolineTask(
+            new Position(800, 500),   // parte 1 al lado del spawn
+            new Position(1020, 500)    // parte 2 al lado del spawn
         );
+
+        List<Task> trashTasks = taskFactory.createTrashTask(
+            new Position(1000, 400),   // saco - parte 1
+            new Position(1100, 700)    // contenedor - parte 2
+        );
+
+
+
+        List<Task> tasks = new ArrayList<>(List.of(
+            taskFactory.createNumberTask(new Position(100, 500)),
+            taskFactory.createBotellonTask(new Position(700, 400)),
+            taskFactory.createWiresTask(new Position(850, 600)),
+            taskFactory.createWhiteBoardTask(new Position(400,700)),
+            taskFactory.createBasketTask(new Position(900,500)),
+            taskFactory.createToiletTask(new Position(1200,400)),
+            taskFactory.createLibraryTask(new Position(1000,700))
+        ));
+
+        tasks.addAll(gasolineTasks);
+        tasks.addAll(trashTasks);
 
         tasks.forEach(t -> allTasks.put(t.getId(), t));
 
@@ -355,11 +373,11 @@ public class GameSessionImpl implements GameSession {
 
     @Override
     public void initiateTask(PlayerId playerId, TaskId taskId) {
-        System.out.println("[initiateTask] llamado por: " + playerId);
-        System.out.println("[initiateTask] taskId: " + taskId);
-        System.out.println("[initiateTask] estado actual: " + stateMachine.getCurrentState());
-        System.out.println("[initiateTask] tareas asignadas al jugador: " + assignedTaskIdsByPlayer.get(playerId));
-        System.out.println("[initiateTask] allTasks keys: " + allTasks.keySet());
+//        System.out.println("[initiateTask] llamado por: " + playerId);
+//        System.out.println("[initiateTask] taskId: " + taskId);
+//        System.out.println("[initiateTask] estado actual: " + stateMachine.getCurrentState());
+//        System.out.println("[initiateTask] tareas asignadas al jugador: " + assignedTaskIdsByPlayer.get(playerId));
+//        System.out.println("[initiateTask] allTasks keys: " + allTasks.keySet());
 
         requireState(GameState.IN_GAME);
 
@@ -371,6 +389,12 @@ public class GameSessionImpl implements GameSession {
         Task task = allTasks.get(taskId);
         if (task == null) {
             System.out.println("[initiateTask] RECHAZADO: tarea no encontrada en allTasks");
+            return;
+        }
+
+        Player player = players.get(playerId);
+        if (!task.canInteract(playerId, player.getPosition())) {
+            System.out.println("[initiateTask] RECHAZADO: canInteract() devolvió false");
             return;
         }
 

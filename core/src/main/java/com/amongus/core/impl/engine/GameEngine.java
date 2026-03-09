@@ -88,7 +88,7 @@ public class GameEngine {
 
         // NUEVO: Obtenemos las tareas del jugador local
         List<Task> playerTasks = session.getAllTasksForPlayer(localPlayerId);
-        System.out.println("[getSnapshot] tareas para " + localPlayerId + ": " + playerTasks.size());
+        //System.out.println("[getSnapshot] tareas para " + localPlayerId + ": " + playerTasks.size());
 
         // Convertimos a TaskView para la UI
         List<TaskView> taskViews = playerTasks.stream()
