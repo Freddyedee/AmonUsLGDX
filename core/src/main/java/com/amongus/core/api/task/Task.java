@@ -24,4 +24,6 @@ public interface Task {
      * Si devuelve null, se usa el círculo amarillo por defecto.
      */
     default String getMapSpritePath() { return null; }
+
+    default float getMapSpriteScale() { return 1.0f; }
 }

@@ -10,12 +10,14 @@ public final class TaskView {
     private final Position position;
     private final boolean completed;
     private final String mapSpritePath;
+    private final float mapSpriteScale;
 
     public TaskView(Task task, boolean completed) {
         this.id = task.getId();
         this.position = task.getPosition();
         this.completed = completed;
         this.mapSpritePath = task.getMapSpritePath();
+        this.mapSpriteScale = task.getMapSpriteScale();
     }
 
     public TaskId getId() {
@@ -29,4 +31,6 @@ public final class TaskView {
     public boolean isCompleted() { return completed; }
 
     public String getMapSpritePath() { return mapSpritePath; }
+
+    public float getMapSpriteScale() { return mapSpriteScale; }
 }
