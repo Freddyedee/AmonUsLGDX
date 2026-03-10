@@ -24,7 +24,7 @@ import com.amongus.core.view.GameSnapshot;
 import com.amongus.core.view.PlayerView;
 import com.amongus.core.impl.player.PlayerImpl;
 import com.amongus.core.impl.voting.VotingSystemImpl;
-import com.amongus.core.view.TaskView; // Nuevo de Eliuber
+import com.amongus.core.view.TaskView;
 
 import java.util.List;
 import java.util.Optional;
