@@ -1,11 +1,14 @@
 package com.amongus.core.api.session;
 
+import com.amongus.core.api.Vote.Vote;
 import com.amongus.core.api.player.Player;
 import com.amongus.core.api.player.PlayerId;
 import com.amongus.core.api.state.GameState;
-import com.amongus.core.api.Vote.Vote;
+import com.amongus.core.api.task.Task;
+import com.amongus.core.api.task.TaskId;
 
 import java.util.Collection;
+import java.util.List;
 
 /**
  * Contrato que representa una sesión de juego (una partida).
@@ -133,4 +136,15 @@ public interface GameSession {
      * @return jugadores actuales
      */
     Collection<Player> getPlayers();
+
+    // Devuelve las tareas pendientes del jugador
+    List<Task> getTasksForPlayer(PlayerId playerId);
+
+    void initiateTask(PlayerId localPlayerId, TaskId taskId);
+
+    TaskProgressTracker getProgressTracker();
+
+    boolean isTaskCompleted(PlayerId localPlayerId, TaskId id);
+
+    List<Task> getAllTasksForPlayer(PlayerId localPlayerId);
 }

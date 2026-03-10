@@ -11,12 +11,13 @@ public class PlayerImpl implements Player {
     private final PlayerId id;
     private final String name;
     private Position position;
-    private final SkinColor skinColor;
+    private SkinColor skinColor;
 
 
     private Role role;
     private boolean alive;
     private boolean connected;
+    private boolean venting = false;
 
     private boolean moving = false;
     private int direction = 1;
@@ -31,6 +32,11 @@ public class PlayerImpl implements Player {
 
     }
 
+    public void revive() {
+        this.alive = true;
+        this.venting = false;
+    }
+
     //Implementa los metodos definidos en la intrface Player
     @Override
     public PlayerId getId() {
@@ -42,9 +48,15 @@ public class PlayerImpl implements Player {
         return name;
     }
 
+    public void setSkinColor(SkinColor color) {
+        this.skinColor = color;
+    }
+
     public Position getPosition() {
         return position;
     }
+
+    public void setPosition(Position position) { this.position = position; }
 
     @Override
     public void updatePosition(Position targetPos) {
@@ -68,11 +80,18 @@ public class PlayerImpl implements Player {
 
 
     @Override
-    public void move(int deltaX, int deltaY) {
+    public void move(float deltaX, float deltaY) {
         this.position = new Position(this.position.x() + deltaX, this.position.y() + deltaY);
     }
 
+    @Override
+    public boolean isVenting() { return venting; }
+
+    @Override
+    public void setVenting(boolean venting) { this.venting = venting; }
+
     /*Metodos que usan gameSesion*/
+
 
     public void assignRole(Role role){
         this.role = role;

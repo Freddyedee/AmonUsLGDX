@@ -18,4 +18,5 @@ public class MoveAction implements GameAction {
     @Override public PlayerId   getPlayerId()   { return playerId;    }
     @Override public ActionType getType()       { return ActionType.MOVE; }
     public    Position          getDestination(){ return destination;  }
+
 }

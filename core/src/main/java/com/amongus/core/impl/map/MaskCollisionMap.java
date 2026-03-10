@@ -5,33 +5,66 @@ import com.amongus.core.model.Position;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Pixmap;
-
-
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 public class MaskCollisionMap implements GameMap {
-    private final Pixmap collisionMask;
-    private final Color tempColor;
-    // Constantes con el tamaño que le diste al mapa en tu GameScreen
-    private static final float WORLD_WIDTH = 5000f;
-    private static final float WORLD_HEIGHT = 4600f;
+    private final com.badlogic.gdx.graphics.Pixmap collisionMask;
+    private final com.badlogic.gdx.graphics.Color tempColor;
+    private static final float WORLD_WIDTH  = 3840f;
+    private static final float WORLD_HEIGHT = 2160f;
+
+    private final List<List<Position>> ventNetworks = new ArrayList<>();
 
     public MaskCollisionMap(String maskPath) {
-        // Cargamos la máscara en la RAM, no en la tarjeta de video
-        this.collisionMask = new Pixmap(Gdx.files.internal(maskPath));
-        this.tempColor = new Color();
+        this.collisionMask = new com.badlogic.gdx.graphics.Pixmap(Gdx.files.internal(maskPath));
+        this.tempColor = new com.badlogic.gdx.graphics.Color();
+
+        String pathName = maskPath.toLowerCase();
+
+        // ── MAPA 1: Tus coordenadas exactas ──
+        if (pathName.endsWith("mapacolisiones.png")) {
+            ventNetworks.add(Arrays.asList(fromPaint(565, 57), fromPaint(1583, 1007)));
+            ventNetworks.add(Arrays.asList(fromPaint(2300, 394), fromPaint(2132, 1016), fromPaint(3052, 1006)));
+            ventNetworks.add(Arrays.asList(fromPaint(588, 1960), fromPaint(1850, 2066), fromPaint(2514, 2127)));
+
+            System.out.println("[MAPA] Ventilaciones del Mapa 1 cargadas.");
+
+            // ── MAPA 2: Tus coordenadas exactas ──
+        } else if (pathName.endsWith("mapacolisiones2.png")) {
+            ventNetworks.add(Arrays.asList(fromPaint(725, 21), fromPaint(1794, 232)));
+            ventNetworks.add(Arrays.asList(fromPaint(46, 1043), fromPaint(1614, 1333), fromPaint(766, 1852)));
+            ventNetworks.add(Arrays.asList(fromPaint(3544, 728), fromPaint(3240, 2099), fromPaint(2395, 2117)));
+
+            System.out.println("[MAPA] Ventilaciones del Mapa 2 cargadas.");
+        }
+    }
+
+    private Position fromPaint(float paintX, float paintY) {
+        return new Position(paintX, WORLD_HEIGHT - paintY);
     }
 
     @Override
     public boolean canMove(Position from, Position to) {
-        // El personaje mide 50x50. Crear una caja de colisión para los pies.
-        // Asumiendo que to.x() y to.y() es la esquina inferior izquierda del sprite:
+        // ── BYPASS DE COLISIÓN PARA ALCANTARILLAS ──
+        // Si el destino es una alcantarilla (margen de 5px), teletranspórtalo sin importar los muros
+        for (List<Position> network : ventNetworks) {
+            for (Position vent : network) {
+                if (Math.abs(vent.x() - to.x()) < 5.0f && Math.abs(vent.y() - to.y()) < 5.0f) {
+                    return true;
+                }
+            }
+        }
 
-        int margenIzquierdo = to.x() + 15;
-        int margenDerecho = to.x() + 30;
-        int basePies = to.y() + 5;
-        int topePies = to.y() + 20;
+        int toX = (int) to.x();
+        int toY = (int) to.y();
 
-        // Verificamos si las 4 esquinas de la caja de los pies están en zona blanca
+        int margenIzquierdo = toX - 12;
+        int margenDerecho   = toX + 12;
+        int basePies = toY;
+        int topePies = toY + 12;
+
         return isWalkable(margenIzquierdo, basePies) &&
             isWalkable(margenDerecho, basePies) &&
             isWalkable(margenIzquierdo, topePies) &&
@@ -39,24 +72,17 @@ public class MaskCollisionMap implements GameMap {
     }
 
     private boolean isWalkable(int worldX, int worldY) {
-        // 1. Traducimos la coordenada del mundo (0-5000) al píxel real de la imagen
         int pixelX = (int) ((worldX / WORLD_WIDTH) * collisionMask.getWidth());
         int pixelY = (int) ((worldY / WORLD_HEIGHT) * collisionMask.getHeight());
 
-        // 2. Evitar que el jugador se salga de los límites de la imagen
         if (pixelX < 0 || pixelX >= collisionMask.getWidth() || pixelY < 0 || pixelY >= collisionMask.getHeight()) {
-            return false; // Fuera del mapa es colisión
+            return false;
         }
 
-        // 3. Invertimos la Y porque LibGDX dibuja hacia arriba y Pixmap lee hacia abajo.
-        // Restamos 1 extra para evitar un error de "IndexOutOfBounds" en el borde superior.
         int invertedY = collisionMask.getHeight() - 1 - pixelY;
-
-        // 4. Leemos el color del píxel ya escalado
         int pixelValue = collisionMask.getPixel(pixelX, invertedY);
         Color.rgba8888ToColor(tempColor, pixelValue);
 
-        // 5. Verificamos si es pared (negro puro)
         if (tempColor.r < 0.1f && tempColor.g < 0.1f && tempColor.b < 0.1f) {
             return false;
         }
@@ -64,9 +90,35 @@ public class MaskCollisionMap implements GameMap {
         return true;
     }
 
-    public void dispose() {
-        if (collisionMask != null) {
-            collisionMask.dispose();
+    @Override
+    public Position getNearestVent(Position pos, float maxDistance) {
+        Position nearest = null;
+        double minD = maxDistance;
+        for (List<Position> network : ventNetworks) {
+            for (Position vent : network) {
+                double d = Math.hypot(pos.x() - vent.x(), pos.y() - vent.y());
+                if (d < minD) { minD = d; nearest = vent; }
+            }
         }
+        return nearest;
+    }
+
+    @Override
+    public Position getNextVentInNetwork(Position currentVent, int direction) {
+        for (List<Position> network : ventNetworks) {
+            for (int i = 0; i < network.size(); i++) {
+                Position vent = network.get(i);
+                if (Math.hypot(currentVent.x() - vent.x(), currentVent.y() - vent.y()) < 50.0) {
+                    int nextIndex = (i + direction) % network.size();
+                    if (nextIndex < 0) nextIndex += network.size();
+                    return network.get(nextIndex);
+                }
+            }
+        }
+        return null;
+    }
+
+    public void dispose() {
+        if (collisionMask != null) collisionMask.dispose();
     }
 }

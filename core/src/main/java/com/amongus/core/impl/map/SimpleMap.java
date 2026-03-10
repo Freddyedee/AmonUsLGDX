@@ -18,15 +18,18 @@ import com.amongus.core.model.Position;
  */
 public class SimpleMap implements GameMap {
 
-    /**
-     * Determina si un movimiento es válido.
-     *
-     * En esta versión inicial:
-     *  - Se permite cualquier movimiento distinto a la misma posición
-     *
-     * Esta lógica se puede endurecer más adelante
-     * (paredes, zonas restringidas, etc.)
-     */
+    @Override
+    public Position getNearestVent(Position pos, float maxDistance) {
+        // SimpleMap no tiene ventilaciones
+        return null;
+    }
+
+    @Override
+    public Position getNextVentInNetwork(Position currentVent, int direction) {
+        // SimpleMap no tiene ventilaciones
+        return null;
+    }
+
     @Override
     public boolean canMove(Position from, Position to) {
         return true;

@@ -1,31 +1,27 @@
 package com.amongus.core.view.screens;
 
 import com.amongus.core.AmongUsGame;
-import com.amongus.core.GameScreen;
-import com.amongus.core.api.player.PlayerId;
-import com.amongus.core.api.player.Role;
-import com.amongus.core.impl.engine.GameEngine;
-import com.amongus.core.model.Position;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.Texture.TextureFilter;
+import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator;
+import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator.FreeTypeFontParameter;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.Stage;
-import com.badlogic.gdx.scenes.scene2d.ui.Skin;
-import com.badlogic.gdx.scenes.scene2d.ui.Table;
-import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
+import com.badlogic.gdx.scenes.scene2d.ui.*;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
-import com.badlogic.gdx.utils.viewport.ScreenViewport;
+import com.badlogic.gdx.utils.Align;
+import com.badlogic.gdx.utils.viewport.FitViewport;
 
 public class MainMenuScreen implements Screen {
 
-    // Referencia al juego principal para poder cambiar de pantallas
     private final AmongUsGame game;
-
-    // Stage es el "escenario" donde colocamos los botones
     private Stage stage;
-    // Skin contiene los estilos visuales (fuentes, colores, texturas de los botones)
     private Skin skin;
+    private Texture bgTexture;
 
     public MainMenuScreen(AmongUsGame game) {
         this.game = game;
@@ -33,20 +29,37 @@ public class MainMenuScreen implements Screen {
 
     @Override
     public void show() {
-        // Inicializamos el escenario
-        stage = new Stage(new ScreenViewport());
-
-        // Es VITAL decirle a LibGDX que este escenario va a recibir los clicks del mouse
+        stage = new Stage(new FitViewport(1280, 720));
         Gdx.input.setInputProcessor(stage);
 
-        // Cargamos el nuevo skin Comic.
-        // Asegúrate de que la ruta coincida exactamente con la ubicación en tu carpeta assets.
+        // 1. Agregar la imagen de fondo al fondo del Stage
+        bgTexture = new Texture(Gdx.files.internal("ui/Imagen_Menu.png")); // Ruta del fondo de pantalla
+        Image bgImage = new com.badlogic.gdx.scenes.scene2d.ui.Image(bgTexture);
+        bgImage.setSize(1280, 720);
+        stage.addActor(bgImage); // Se añade de primero para que quede atrás
+
         skin = new Skin(Gdx.files.internal("ui/comic/comic-ui.json"));
 
-        // Creamos la tabla principal y le decimos que ocupe toda la pantalla
+        // ── GENERACIÓN DE FUENTES ──
+        FreeTypeFontGenerator genRegular = new FreeTypeFontGenerator(Gdx.files.internal("ui/comic/fuente-regular.ttf"));
+        FreeTypeFontParameter paramRegular = new FreeTypeFontParameter();
+        paramRegular.size = 28;
+        paramRegular.minFilter = TextureFilter.Linear;
+        paramRegular.magFilter = TextureFilter.Linear;
+        BitmapFont fontRegular = genRegular.generateFont(paramRegular);
+        genRegular.dispose();
+
+        // Aplicamos las fuentes al Skin
+        skin.add("font-regular", fontRegular, BitmapFont.class);
+        skin.get(TextButton.TextButtonStyle.class).font = fontRegular;
+        skin.get(Label.LabelStyle.class).font = fontRegular;
+
         Table table = new Table();
         table.setFillParent(true);
-        // table.setDebug(true); // Descomenta esto para ver las líneas de la tabla y ajustar el diseño
+
+        // 2. Alinear a la izquierda
+        table.align(Align.left);
+        table.padLeft(60f);
 
         // ── Creación de los botones ──
         TextButton btnJugar = new TextButton("Jugar", skin);
@@ -56,11 +69,9 @@ public class MainMenuScreen implements Screen {
         TextButton btnSalir = new TextButton("Salir", skin);
 
         // ── Agregando funcionalidad (Listeners) ──
-
         btnJugar.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                // Cambiamos a la pantalla de selección de red
                 game.setScreen(new PlayMenuScreen(game));
                 dispose();
             }
@@ -69,7 +80,7 @@ public class MainMenuScreen implements Screen {
         btnAyuda.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                game.setScreen(new HelpScreen(game)); // ¡Llamamos a la pantalla de Ayuda!
+                game.setScreen(new HelpScreen(game));
                 dispose();
             }
         });
@@ -77,18 +88,15 @@ public class MainMenuScreen implements Screen {
         btnAcercaDe.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                game.setScreen(new AboutScreen(game)); //
-                dispose(); // Liberamos la pantalla actual
+                game.setScreen(new AboutScreen(game));
+                dispose();
             }
         });
 
-        // Listener para el botón de Configuración / Opciones
         btnSettings.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                // Cambiamos a la nueva pantalla de ajustes
                 game.setScreen(new SettingsScreen(game));
-                // Destruimos el menú principal para liberar memoria
                 dispose();
             }
         });
@@ -96,61 +104,35 @@ public class MainMenuScreen implements Screen {
         btnSalir.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                Gdx.app.exit(); // Cierra el juego
+                Gdx.app.exit();
             }
         });
 
         // ── Organizando los botones en la tabla ──
-        // .pad(10) añade un margen de separación entre botones
-        // .fillX() hace que todos los botones tengan el mismo ancho
+        float btnWidth = 350f;
+        float btnHeight = 60f;
+        float padding = 15f;
 
-        table.add(btnJugar).fillX().uniformX().pad(10);
-        table.row(); // Salto de línea (siguiente fila)
+        table.add(btnJugar).width(btnWidth).height(btnHeight).padBottom(padding).row();
+        table.add(btnAyuda).width(btnWidth).height(btnHeight).padBottom(padding).row();
+        table.add(btnAcercaDe).width(btnWidth).height(btnHeight).padBottom(padding).row();
+        table.add(btnSettings).width(btnWidth).height(btnHeight).padBottom(padding).row();
+        table.add(btnSalir).width(btnWidth).height(btnHeight).padBottom(padding).row();
 
-        table.add(btnAyuda).fillX().uniformX().pad(10);
-        table.row();
-
-        table.add(btnAcercaDe).fillX().uniformX().pad(10);
-        table.row();
-
-        table.add(btnSettings).fillX().uniformX().pad(10);
-        table.row();
-
-        table.add(btnSalir).fillX().uniformX().pad(10);
-
-        // Finalmente, añadimos la tabla al escenario
         stage.addActor(table);
     }
 
     @Override
     public void render(float delta) {
-        // Limpiamos la pantalla con un color oscuro (RGBA)
-        Gdx.gl.glClearColor(0.1f, 0.1f, 0.1f, 1);
+        Gdx.gl.glClearColor(0.1f, 0.1f, 0.15f, 1); // Fondo unificado con el resto de pantallas
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
-
-        // Actualizamos y dibujamos el escenario (los botones)
         stage.act(Math.min(Gdx.graphics.getDeltaTime(), 1 / 30f));
         stage.draw();
     }
 
-    @Override
-    public void resize(int width, int height) {
-        // Actualiza el tamaño del escenario si el usuario redimensiona la ventana
-        stage.getViewport().update(width, height, true);
-    }
-
-    @Override
-    public void pause() {}
-
-    @Override
-    public void resume() {}
-
-    @Override
-    public void hide() {}
-
-    @Override
-    public void dispose() {
-        stage.dispose();
-        skin.dispose();
-    }
+    @Override public void resize(int width, int height) { stage.getViewport().update(width, height, true); }
+    @Override public void pause() {}
+    @Override public void resume() {}
+    @Override public void hide() {}
+    @Override public void dispose() { stage.dispose(); skin.dispose(); if(bgTexture != null) bgTexture.dispose();}
 }

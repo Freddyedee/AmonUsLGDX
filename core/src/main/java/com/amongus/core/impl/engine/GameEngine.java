@@ -1,92 +1,118 @@
 package com.amongus.core.impl.engine;
 
-
 import com.amongus.core.api.Vote.Vote;
 import com.amongus.core.api.events.EventBus;
 import com.amongus.core.api.map.GameMap;
 import com.amongus.core.api.map.MapType;
+import com.amongus.core.api.minigame.MinigameScreen; // Nuevo de Eliuber
 import com.amongus.core.api.player.Player;
 import com.amongus.core.api.player.PlayerId;
 import com.amongus.core.api.player.Role;
 import com.amongus.core.api.player.SkinColor;
 import com.amongus.core.api.session.GameSession;
+import com.amongus.core.api.session.TaskProgressTracker; // Nuevo de Eliuber
 import com.amongus.core.api.state.GameState;
+import com.amongus.core.api.task.Task; // Nuevo de Eliuber
+import com.amongus.core.api.task.TaskId; // Nuevo de Eliuber
 import com.amongus.core.impl.event.EventBusImpl;
 import com.amongus.core.impl.map.MaskCollisionMap;
+import com.amongus.core.impl.network.GameClient;
 import com.amongus.core.impl.player.ColorAssigner;
 import com.amongus.core.impl.session.GameSessionImpl;
+import com.amongus.core.model.Position;
 import com.amongus.core.view.GameSnapshot;
 import com.amongus.core.view.PlayerView;
 import com.amongus.core.impl.player.PlayerImpl;
 import com.amongus.core.impl.voting.VotingSystemImpl;
+import com.amongus.core.view.TaskView; // Nuevo de Eliuber
 
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/**
- * GameEngine es la FACHADA del Core.
- *
- * Es el punto de entrada único para interactuar con el dominio del juego.
- * Los módulos externos (Application, Desktop, Multiplayer) SOLO deben
- * comunicarse con el Core a través de esta clase.
- *
- * Responsabilidades:
- *  - Crear y mantener una sesión de juego
- *  - Exponer operaciones de alto nivel (casos de uso)
- *  - Delegar la lógica real a GameSession
- *  - Gestionar el EventBus
- *
- * Importante:
- *  - NO contiene reglas complejas
- *  - NO conoce detalles de UI, red o persistencia
- */
+import static java.util.UUID.fromString;
 
 public class GameEngine {
 
     private final UUID sessionId;
     private final EventBus eventBus;
     private final GameSession session;
-    private final GameMap gameMap;
-    private final MapType mapType;
+    private GameMap gameMap;
+    private MapType mapType;
     private PlayerId localPlayerId;
     private final VotingSystemImpl votingSystem = new VotingSystemImpl();
     private String gameResult = null;
     private final ColorAssigner colorAssigner = new ColorAssigner();
 
+    // Pantalla de minijuego (Nuevo de Eliuber)
+    private MinigameScreen activeMinigame = null;
+
+    // Flag de debug (Nuevo de Eliuber)
+    private static final boolean DEBUG_ROLES = true;
+
     public GameEngine(MapType mapType){
         this.sessionId = UUID.randomUUID();
         this.eventBus = new EventBusImpl();
-        this.mapType = mapType; // Guardamos el mapa elegido
+        this.mapType = mapType;
 
-        // Pasamos la ruta de colisión dinámica al mapa
-        this.gameMap = new MaskCollisionMap(mapType.getCollisionPath());
-
-        this.session = new GameSessionImpl(sessionId, eventBus, gameMap);
+        // Pasamos 1500x1000 para la Sala de Espera
+        this.gameMap = new MaskCollisionMap("mapas/SalaEsperaColisiones.png");
+        this.session = new GameSessionImpl(sessionId, eventBus, gameMap, this);
     }
 
     // Getter para que la vista gráfica sepa qué dibujar
     public MapType getMapType() {
         return mapType;
     }
+    public void setMapType(MapType mapType) {
+        this.mapType = mapType;
+    }
 
     /* ===================== CONSULTAS ===================== */
 
+    // Modificado por Eliuber para incluir las tareas en el Snapshot
     public GameSnapshot getSnapshot() {
         List<PlayerView> playerViews = session.getPlayers().stream()
             .map(p -> {
-                SkinColor color = (p instanceof PlayerImpl pi) ? pi.getSkinColor() : SkinColor.WHITE;
-                PlayerView view = new PlayerView(p.getId(), p.alive(), p.getPosition(), p.getName(), color);
+                SkinColor color = (p instanceof PlayerImpl pi) ? pi.getSkinColor() : SkinColor.AZUL;
+                PlayerView view = new PlayerView(p.getId(), p.alive(), p.getPosition(), p.getName(), color, p.getRole());
+
                 if (p instanceof PlayerImpl pi) {
                     view.setMoving(pi.isMoving());
                     view.setDirection(pi.getDirection());
+                    view.setVenting(pi.isVenting());
                 }
                 return view;
             })
             .toList();
 
-        return new GameSnapshot(session.getCurrentState(), playerViews, localPlayerId);
+        // Extraer tareas del jugador local
+        List<Task> playerTasks = session.getAllTasksForPlayer(localPlayerId);
+
+        // Convertir a TaskView
+        List<TaskView> taskViews = playerTasks.stream()
+            .map(t -> {
+                boolean done = session.isTaskCompleted(localPlayerId, t.getId());
+                return new TaskView(t, done);
+            })
+            .toList();
+
+        // Extraer progreso general
+        TaskProgressTracker tracker = session.getProgressTracker();
+        int total     = (tracker != null) ? tracker.getTotal()     : 0;
+        int completed = (tracker != null) ? tracker.getCompleted() : 0;
+
+        // Retornar Snapshot con los nuevos parámetros de tareas
+        return new GameSnapshot(
+            session.getCurrentState(),
+            playerViews,
+            localPlayerId,
+            taskViews,
+            total,
+            completed
+        );
     }
+
     public EventBus getEventBus() {
         return eventBus;
     }
@@ -95,37 +121,27 @@ public class GameEngine {
         return session.getCurrentState();
     }
 
+    // Nuevo método de Eliuber para interactuar con tareas
+    public void initiateTask(TaskId taskId) {
+        session.initiateTask(localPlayerId, taskId);
+    }
+
     /* ===================== CASOS DE USO ===================== */
 
-    /**
-     * Crea y une a un jugador automáticamente.
-     * Así la UI no tiene que conocer PlayerImpl.
-     */
-
-    // Usado por AmongUsGame: Crea tu jugador LOCAL con un ID aleatorio nuevo.
-    public PlayerId spawnPlayer(String name) {
+    public PlayerId spawnPlayer(String name, SkinColor preferredColor) {
         PlayerId newId = new PlayerId(java.util.UUID.randomUUID());
-        return registerPlayerInternal(newId, name);
-    }
-
-    // Usado por GameClient (Red): Crea un jugador DE RED usando el ID que llegó por Sockets.
-    public PlayerId spawnPlayerWithId(String uuidStr, String name) {
-        PlayerId newId = new PlayerId(java.util.UUID.fromString(uuidStr));
-        return registerPlayerInternal(newId, name);
-    }
-
-    // Metodo privado auxiliar para no repetir la lógica de color y sesión
-    private PlayerId registerPlayerInternal(PlayerId newId, String name) {
-        SkinColor color = colorAssigner.assign();
-        Player player = new PlayerImpl(newId, name, color);
-
+        SkinColor assignedColor = colorAssigner.assign(preferredColor);
+        Player player = new PlayerImpl(newId, name, assignedColor);
         session.addPlayer(player);
+        if (this.localPlayerId == null) this.localPlayerId = newId;
+        return newId;
+    }
 
-        // Si es el primer jugador que instanciamos, lo tomamos como la cámara principal
-        if (this.localPlayerId == null) {
-            this.localPlayerId = newId;
-        }
-
+    public PlayerId spawnPlayerWithId(String uuidStr, String name, SkinColor networkColor) {
+        PlayerId newId = new PlayerId(java.util.UUID.fromString(uuidStr));
+        SkinColor assignedColor = colorAssigner.assignForce(networkColor);
+        Player player = new PlayerImpl(newId, name, assignedColor);
+        session.addPlayer(player);
         return newId;
     }
 
@@ -139,7 +155,6 @@ public class GameEngine {
         }
     }
 
-    //Intentar matar LÓGICA
     public void requestKill(PlayerId killerId, PlayerId victimId) {
         Player killer = session.getPlayers().stream()
             .filter(p -> p.getId().equals(killerId))
@@ -150,34 +165,64 @@ public class GameEngine {
             .findFirst().orElse(null);
 
         if (killer == null || victim == null || !killer.alive() || !victim.alive()) {
-            System.out.println("[ENGINE] requestKill RECHAZADO: killer o victim inválido");
             return;
         }
 
-        // Validación con el MISMO rango que usas en cliente
         double distance = Math.hypot(
-
             killer.getPosition().x() - victim.getPosition().x(),
             killer.getPosition().y() - victim.getPosition().y()
         );
-        System.out.println("[ENGINE] Distancia real = " + String.format("%.1f", distance));
         if (distance <= 150.0) {
-            System.out.println("[ENGINE] → Llamando attemptKill...");
             session.attemptKill(killerId, victimId);
-            System.out.println("[ENGINE] → attemptKill ejecutado correctamente");
-        }
-        else{
-            System.out.println("[ENGINE] → Distancia demasiado grande, kill rechazado");
         }
     }
 
+    public void startGameHost(GameClient client) {
+        java.util.List<Player> players = new java.util.ArrayList<>(session.getPlayers());
+        PlayerId impostorId = players.get(new java.util.Random().nextInt(players.size())).getId();
 
-    public void startGame() {
+        Position spawnPoint = getSpawnPositionForMap();
+
+        for (Player p : players) {
+            assignRole(p.getId(), p.getId().equals(impostorId) ? Role.IMPOSTOR : Role.CREWMATE);
+            session.movePlayer(p.getId(), spawnPoint);
+        }
+
+        transitionToGameMap();
+        session.startGame();
+
+        if (client != null) {
+            client.enviarMensaje("START_GAME:" + impostorId.value().toString());
+        }
+    }
+
+    public void startGameClient(String impostorIdStr) {
+        PlayerId impostorId = new PlayerId(java.util.UUID.fromString(impostorIdStr));
+        Position spawnPoint = getSpawnPositionForMap();
+
+        for (Player p : session.getPlayers()) {
+            assignRole(p.getId(), p.getId().equals(impostorId) ? Role.IMPOSTOR : Role.CREWMATE);
+            session.movePlayer(p.getId(), spawnPoint);
+        }
+        transitionToGameMap();
         session.startGame();
     }
 
+    private void transitionToGameMap() {
+        if (this.gameMap instanceof MaskCollisionMap) {
+            ((MaskCollisionMap) this.gameMap).dispose();
+        }
+
+        MaskCollisionMap newMap = new MaskCollisionMap(mapType.getCollisionPath());
+        this.gameMap = newMap;
+
+        if (session instanceof GameSessionImpl) {
+            ((GameSessionImpl) session).setGameMap(newMap);
+        }
+    }
+
     public void movePlayer(PlayerId playerId, Object destination) {
-       session.movePlayer(playerId, destination);
+        session.movePlayer(playerId, destination);
     }
 
     public void setPlayerMoving(PlayerId id, boolean moving, int direction) {
@@ -197,7 +242,6 @@ public class GameEngine {
         votingSystem.castVote(vote);
     }
 
-    // Nuevo: para reportar cuerpos desde la UI
     public void reportBody(PlayerId reporterId, PlayerId victimId) {
         session.reportBody(reporterId, victimId);
     }
@@ -206,40 +250,122 @@ public class GameEngine {
         return localPlayerId;
     }
 
-    //Votación
-
     public Optional<PlayerId> resolveVoting(){
         Optional<PlayerId> expelled = votingSystem.resolve();
 
-        //Si alguien fue votado por ende lo matamos
         expelled.ifPresent(id->{
             session.getPlayers().stream()
-                    .filter(p->p.getId().equals(id)).findFirst().ifPresent(Player::kill);
+                .filter(p->p.getId().equals(id)).findFirst().ifPresent(Player::kill);
             System.out.println("[VOTACION] Expulsado: " + id);
-            });
+        });
 
         session.resolveVoting();
 
-        //CONDICION DE VICTORIA
-
-        //Verificación
-
         long alive = session.getPlayers().stream().filter(Player::alive).count();
         long impostors = session.getPlayers().stream().filter(Player::alive)
-                                .filter(p->p.getRole() == Role.IMPOSTOR).count();
+            .filter(p->p.getRole() == Role.IMPOSTOR).count();
 
         if(impostors >= alive - impostors){
             gameResult = "IMPOSTOR";
-            System.out.println("[FIN] El impostor gana!");
         }else if(impostors == 0){
             gameResult = "CREWMATE";
-            System.out.println("[FIN] los crewmates gana!");
         }
 
         return expelled;
     }
 
-    public String getGameResult() {
-        return gameResult;
+    public Position getNearestVent(Position pos, float maxDist) {
+        return gameMap.getNearestVent(pos, maxDist);
     }
+
+    public Position getNextVent(Position current, int dir) {
+        return gameMap.getNextVentInNetwork(current, dir);
+    }
+
+    public void processVentAction(PlayerId pId, Position targetVent, boolean exiting) {
+        Player player = session.getPlayers().stream().filter(p -> p.getId().equals(pId)).findFirst().orElse(null);
+        if (player == null || !player.alive() || player.getRole() != Role.IMPOSTOR) return;
+
+        player.setVenting(!exiting);
+        if (!exiting && targetVent != null) {
+            session.movePlayer(pId, targetVent);
+        }
+    }
+
+    private Position getSpawnPositionForMap() {
+        if (mapType == MapType.MAPA_1) {
+            return new Position(1650f, 150f);
+        } else {
+            return new Position(1700f, 1600f);
+        }
+    }
+
+    public void restartToLobby() {
+        this.gameResult = null;
+        votingSystem.clearVotes();
+
+        if (this.gameMap instanceof MaskCollisionMap) {
+            ((MaskCollisionMap) this.gameMap).dispose();
+        }
+        MaskCollisionMap newMap = new MaskCollisionMap("mapas/SalaEsperaColisiones.png");
+        this.gameMap = newMap;
+
+        if (session instanceof GameSessionImpl) {
+            ((GameSessionImpl) session).setGameMap(newMap);
+            ((GameSessionImpl) session).resetToLobby();
+        }
+
+        for (Player p : session.getPlayers()) {
+            movePlayer(p.getId(), new Position(1920f, 1080f));
+        }
+    }
+
+    // --- NUESTROS MÉTODOS DE RED QUE MANTUVIMOS INTACTOS ---
+    public void removePlayer(PlayerId id) {
+        if (session instanceof GameSessionImpl) {
+            ((GameSessionImpl) session).removePlayer(id);
+        }
+    }
+
+    public void forceMovePlayer(PlayerId id, Position pos) {
+        session.getPlayers().stream()
+            .filter(p -> p.getId().equals(id))
+            .filter(p -> p instanceof PlayerImpl)
+            .map(p -> (PlayerImpl) p)
+            .findFirst()
+            .ifPresent(pi -> pi.setPosition(pos));
+    }
+
+    public void updatePlayerDirection(PlayerId id, int dir) {
+        session.getPlayers().stream()
+            .filter(p -> p.getId().equals(id))
+            .filter(p -> p instanceof PlayerImpl)
+            .map(p -> (PlayerImpl) p)
+            .findFirst()
+            .ifPresent(pi -> pi.setDirection(dir));
+    }
+
+    public void forceGameResult(String result) {
+        this.gameResult = result;
+    }
+
+    public void changePlayerColor(PlayerId id, SkinColor newColor) {
+        session.getPlayers().stream()
+            .filter(p -> p.getId().equals(id))
+            .filter(p -> p instanceof PlayerImpl)
+            .map(p -> (PlayerImpl) p)
+            .findFirst()
+            .ifPresent(pi -> pi.setSkinColor(newColor));
+    }
+
+    // --- MÉTODOS DE MINIJUEGOS (Nuevos de Eliuber) ---
+    public void setActiveMinigame(MinigameScreen screen) {
+        this.activeMinigame = screen;
+        if (screen != null) screen.show();
+    }
+    public MinigameScreen getActiveMinigame() { return activeMinigame; }
+    public void clearActiveMinigame()        { this.activeMinigame = null; }
+
+    public String getGameResult() { return gameResult; }
+    public java.util.Set<PlayerId> getVotedPlayers() { return votingSystem.getVotedPlayers(); }
 }

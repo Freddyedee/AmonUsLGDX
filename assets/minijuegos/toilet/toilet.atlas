@@ -1,0 +1,13 @@
+toilet.png
+size:512,512
+repeat:none
+spaceButton
+bounds:2,72,150,86
+toiletFinished1-removebg-preview
+bounds:135,232,131,230
+toiletFinished2-removebg-preview
+bounds:2,160,131,302
+toiletact1-removebg-preview
+bounds:154,2,122,228
+toiletact2-removebg-preview
+bounds:268,237,125,225

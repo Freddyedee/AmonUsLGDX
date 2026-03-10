@@ -84,13 +84,13 @@ public class AnimationPlayer {
         batch.draw(frames[currentFrames], 0, 0, w, h);
     }
 
-    //metodo ara dibujar en la posción en la cual deberia aparecer el cadaver.
+    //metodo para dibujar en la posción en la cual deberia aparecer el cadaver.
 
     public void drawAtPosition(SpriteBatch batch, float x, float y, float size){
         if(frames  == null || currentFrames >= totalFrames){
             return;
         }
-        batch.draw(frames[currentFrames], x, y, size, size); // ✅ sin restar size/2
+        batch.draw(frames[currentFrames], x, y, size, size);
     }
 
     public boolean isPlaying(){
@@ -117,9 +117,5 @@ public class AnimationPlayer {
             frames = null;
         }
     }
-
-
-
-
 
 }

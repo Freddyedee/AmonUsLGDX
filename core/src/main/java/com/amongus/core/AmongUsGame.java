@@ -1,76 +1,64 @@
 package com.amongus.core;
 
-/**
- * Punto de entrada del juego para LibGDX.
- *
- * Esta clase NO contiene lógica del juego.
- * Su única responsabilidad es:
- *  - Inicializar el motor del juego (GameEngine)
- *  - Delegar el ciclo de vida a LibGDX
- *
- * La lógica vive exclusivamente en core/impl.
- */
-
-/** {@link com.badlogic.gdx.ApplicationListener} implementation shared by all platforms. */
-
 import com.amongus.core.api.map.MapType;
 import com.amongus.core.api.player.PlayerId;
+import com.amongus.core.api.player.Role;
+import com.amongus.core.api.player.SkinColor;
 import com.amongus.core.impl.engine.GameEngine;
 import com.amongus.core.impl.network.GameClient;
+import com.amongus.core.model.Position;
 import com.amongus.core.network.Server;
 import com.badlogic.gdx.Game;
 import com.amongus.core.view.screens.MainMenuScreen;
+import com.amongus.core.utils.SettingsManager; // Importamos el gestor
 
 public class AmongUsGame extends Game {
+    private Server serverInstancia; // Atributo para guardar el servidor
 
     @Override
     public void create() {
-        // El juego SIEMPRE arranca limpio en el menú principal
+        // 1. Cargar el XML y aplicar la resolución guardada al iniciar el juego
+        SettingsManager.load();
+        SettingsManager.applyResolution();
+
+        // 2. El juego arranca limpio en el menú principal
         this.setScreen(new MainMenuScreen(this));
     }
 
-    // Este es el metodo que recibe los datos de PlayMenuScreen
     public void startNetworkGame(boolean isHost, String playerName, String ipHost, MapType selectedMap) {
         GameEngine engine = new GameEngine(selectedMap);
 
-        // 1. Creamos NUESTRO jugador con un ID aleatorio y real
-        PlayerId myPlayerId = engine.spawnPlayer(playerName);
+        // 1. Obtenemos tu color preferido
+        SkinColor myColor = SkinColor.valueOf(SettingsManager.playerColor);
+
+        // 2. Creamos NUESTRO jugador con ese color
+        PlayerId myPlayerId = engine.spawnPlayer(playerName, myColor);
+        engine.assignRole(myPlayerId, com.amongus.core.api.player.Role.CREWMATE);
+        engine.movePlayer(myPlayerId, new com.amongus.core.model.Position(1920f, 1080f));
+
+        // 3. Conectamos a la red (Añade el parámetro myColor al constructor)
+        GameClient clienteRed = new GameClient(engine, isHost, myPlayerId, playerName, myColor);
 
         if (isHost) {
-            engine.assignRole(myPlayerId, com.amongus.core.api.player.Role.IMPOSTOR);
-        } else {
-            engine.assignRole(myPlayerId, com.amongus.core.api.player.Role.CREWMATE);
-        }
-
-        // Iniciamos el juego local
-        engine.startGame();
-
-        // Posición inicial base
-        engine.movePlayer(myPlayerId, new com.amongus.core.model.Position(500, 500));
-
-        // 2. Conectamos a la red (el cliente se encargará de avisar que llegamos)
-        GameClient clienteRed = new GameClient(engine, isHost, myPlayerId, playerName);
-
-        if (isHost) {
-            System.out.println("[SISTEMA] Iniciando servidor local...");
-            Server server = new Server();
-            server.setDaemon(true); // Muere cuando se cierra el juego
-            server.start();
-
-            // Le damos 200 milisegundos al servidor para que abra el puerto
-            try {
-                Thread.sleep(200);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
+            // 1. Limpieza preventiva
+            if (serverInstancia != null) {
+                serverInstancia.detener();
             }
 
+            System.out.println("[SISTEMA] Iniciando servidor local...");
+            Server server = new Server();
+            server.setDaemon(true);
+            server.start();
+
+            try { Thread.sleep(200); } catch (InterruptedException e) { e.printStackTrace(); }
             clienteRed.conectar("localhost", 5000);
         } else {
             System.out.println("[SISTEMA] Conectando al host en IP: " + ipHost);
             clienteRed.conectar(ipHost, 5000);
         }
 
-        this.setScreen(new GameScreen(engine, clienteRed));
+        // Pasamos el isHost a GameScreen
+        this.setScreen(new GameScreen(engine, clienteRed, isHost));
     }
 
     @Override
@@ -78,5 +66,3 @@ public class AmongUsGame extends Game {
         super.dispose();
     }
 }
-
-

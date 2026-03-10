@@ -3,116 +3,81 @@ package com.amongus.core.impl.session;
 import com.amongus.core.api.Vote.Vote;
 import com.amongus.core.api.events.*;
 import com.amongus.core.api.map.GameMap;
+import com.amongus.core.api.minigame.MinigameScreen;
 import com.amongus.core.api.player.Player;
 import com.amongus.core.api.player.PlayerId;
 import com.amongus.core.api.player.Role;
 import com.amongus.core.api.session.GameSession;
+import com.amongus.core.api.session.TaskProgressTracker;
 import com.amongus.core.api.state.GameState;
+import com.amongus.core.api.task.Task;
+import com.amongus.core.api.task.TaskId;
+import com.amongus.core.impl.engine.GameEngine;
+import com.amongus.core.impl.player.PlayerImpl;
 import com.amongus.core.impl.state.GameStateMachine;
+import com.amongus.core.impl.task.TaskFactory;
 import com.amongus.core.model.Position;
 
 import java.util.*;
+import java.util.stream.Stream;
 
 public class GameSessionImpl implements GameSession {
 
-
-    /**
-     * Identificador único en la partida.
-     * Permite distinguir sesiones en escenarios de multijugador o pruebas.
-     * */
+    private final GameEngine engine;
     private final UUID sessionId;
-
-    /**}
-     * Canal de eventos del dominio.
-     * Se utiliza para notificar al exterior lo que ocurre en el juego.
-     * sin acoplar esta clase a UI o infraestructura.
-     * */
-
     private final EventBus eventBus;
-
-    /**
-     * Mapa del juego.
-     * El GameSession no sabe como funciona el mapa internamente,
-     * solo consulta si una acción es válida.
-     * */
-    private final GameMap gameMap;
-
-    /**
-     * Estado actual de la partida
-     * Controla en que fase del juego nos encontramos
-     * ya sea lobby, in game, meeting, ended, etc.
-     * */
+    private GameMap gameMap;
     private final GameStateMachine stateMachine;
-    /*
-     *Conjunto de jugadores de la partida.
-     * Se indexan por id, es decir, PlayerId para accesar rapido y seguro.
-     * */
     private final Map<PlayerId, Player> players;
-
-
-    /**
-     * Tareas asignadas a los jugadores.
-     * No todas las partidas las usan de inmediato,
-     * pero el core mantiene la estructura preparada.
-     */
-    //private final Map<PlayerId, List<Task>> taskByPlayer;
-
-    /*
-    * Votos emitidos durante una fase de votación.
-    * Solo son válidos cuando el estado del juego lo permite.
-    * */
-
     private final Map<PlayerId, Vote> currentVotes;
 
-    /*
-     *Constructor principal de la sesión.
-     *
-     * Aquí se implementan todas las dependencias necesarias.
-     * Esto facilita pruebas, reemplazos y extensiones.
-     * */
+    // --------------------------------------------------
+    // ATRIBUTOS RELACIONADOS CON TASK (De Eliuber)
+    // -------------------------------------------------
+    private final Map<TaskId, Task> allTasks;
+    private final Map<PlayerId, Set<TaskId>> assignedTaskIdsByPlayer;   // solo las que aún debe hacer
+    private final Map<PlayerId, Set<TaskId>> completedTaskIdsByPlayer;  // las que ya terminó
+    private final TaskFactory taskFactory;
+    private TaskProgressTracker progressTracker;
 
-    public GameSessionImpl(UUID sessionId, EventBus eventBus, GameMap gameMap){
+    public GameSessionImpl(UUID sessionId, EventBus eventBus, GameMap gameMap, GameEngine engine){
+        this.engine = engine;
         this.sessionId = UUID.randomUUID();
         this.eventBus = eventBus;
         this.gameMap = gameMap;
 
         this.stateMachine = new GameStateMachine();
-
-
         this.players = new HashMap<>();
-        //this.taskByPlayer = new HashMap<>();
         this.currentVotes = new HashMap<>();
+
+        // Inicialización de Tareas
+        this.taskFactory = new TaskFactory(engine);
+        this.allTasks = new HashMap<>();
+        this.assignedTaskIdsByPlayer = new HashMap<>();
+        this.completedTaskIdsByPlayer = new HashMap<>();
+
+        // Escuchar eventos de tareas completadas
+        eventBus.subscribe(TaskCompletedEvent.class, event -> {
+            PlayerId pid = event.getPlayerId();
+            TaskId   tid = event.getTaskId();
+
+            assignedTaskIdsByPlayer.getOrDefault(pid, new HashSet<>()).remove(tid);
+            completedTaskIdsByPlayer.computeIfAbsent(pid, k -> new HashSet<>()).add(tid);
+
+            if (progressTracker != null) {
+                progressTracker.taskCompleted();
+                System.out.println("[progreso] pendientes: " + progressTracker.getPending()
+                    + "/" + progressTracker.getTotal());
+            }
+        });
     }
 
     // --------------------------------------------------
     // GESTIÓN DE JUGADORES
     // --------------------------------------------------
 
-    /**
-     * Agrega un jugador a la partida.
-     *
-     * Regla:
-     *  - Solo se pueden unir jugadores en estado LOBBY.
-     */
-    // De momento esto se va a quedar así, ya que no tenemos sala de espera, por lo que se debe permitir unir jugadores en plena partida
-    /*
-    @Override
-    public void addPlayer(Player player){
-        if(stateMachine.getCurrentState() != GameState.LOBBY){
-            throw new IllegalStateException("No se pueden unir jugadores una vez iniciada la partida");
-        }
-
-        players.put(player.getId(), player);
-
-        //Se notifica al exterior que un jugador se ha unido.
-        eventBus.publish(new PlayerJoinedEvent(player.getId()));
-
-    }
-    */
-
     @Override
     public void addPlayer (Player player){
-        // Permitimos LOBBY e IN_GAME para el multijugador dinámico actual
         if(stateMachine.getCurrentState() != GameState.LOBBY && stateMachine.getCurrentState() != GameState.IN_GAME){
             throw new IllegalStateException("No se pueden unir jugadores en este estado");
         }
@@ -120,79 +85,95 @@ public class GameSessionImpl implements GameSession {
         eventBus.publish(new PlayerJoinedEvent(player.getId()));
     }
 
-    /**
-     * Inicia la partida.
-     *
-     * Regla:
-     *  - Debe haber al menos un número mínimo de jugadores
-     *  - El estado pasa de LOBBY a PLAYING
-     */
     @Override
     public void startGame(){
-      if (players.size() < 1){
-          throw new IllegalStateException("No hay suficientes jugadores");
-      }
+        if (players.size() < 1){
+            throw new IllegalStateException("No hay suficientes jugadores");
+        }
 
-      stateMachine.transitionTo(GameState.IN_GAME);
-      eventBus.publish(new GameStartedEvent(sessionId));
+        // --- 1. LIMPIAR DATOS ANTERIORES ---
+        allTasks.clear();
+        assignedTaskIdsByPlayer.clear();
+        completedTaskIdsByPlayer.clear();
+
+        int totalTasks = 0;
+
+        // --- 2. ASIGNAR TAREAS A TODOS LOS JUGADORES ---
+        for (Player p : players.values()) {
+            List<Task> playerTasks = new ArrayList<>();
+
+            // Tareas configuradas por Eliuber
+            playerTasks.add(taskFactory.createBotellonTask(new Position(1200f, 1500f)));
+            playerTasks.add(taskFactory.createWiresTask(new Position(1400f, 1200f)));
+            playerTasks.add(taskFactory.createNumberTask(new Position(1800f, 1600f)));
+            playerTasks.add(taskFactory.createToiletTask(new Position(800f, 1000f)));
+            playerTasks.add(taskFactory.createWhiteBoardTask(new Position(2200f, 900f)));
+            playerTasks.addAll(taskFactory.createTrashTask(new Position(1500f, 500f), new Position(1500f, 200f)));
+
+            Set<TaskId> pending = new HashSet<>();
+            for (Task t : playerTasks) {
+                allTasks.put(t.getId(), t);
+                pending.add(t.getId());
+                totalTasks++;
+            }
+            assignedTaskIdsByPlayer.put(p.getId(), pending);
+        }
+
+        // --- 3. INICIALIZAR LA BARRA DE PROGRESO ---
+        final int finalTotalTasks = totalTasks;
+        this.progressTracker = new TaskProgressTracker(totalTasks) {
+            private int completed = 0;
+            @Override public void taskCompleted() { completed++; }
+            @Override public int getTotal() { return finalTotalTasks; }
+            @Override public int getCompleted() { return completed; }
+            @Override public int getPending() { return finalTotalTasks - completed; }
+        };
+
+        stateMachine.transitionTo(GameState.IN_GAME);
+        eventBus.publish(new GameStartedEvent(sessionId));
     }
 
     // --------------------------------------------------
     // MOVIMIENTO
     // --------------------------------------------------
 
-    /**
-     * Mueve a un jugador en el mapa.
-     *
-     * Reglas:
-     *  - El jugador debe estar vivo
-     *  - El estado del juego debe permitir movimiento
-     *  - El mapa debe autorizar el desplazamiento
-     */
-
     @Override
     public void movePlayer(PlayerId playerId, Object newPosition) {
-        requireState(GameState.IN_GAME);
+        if (stateMachine.getCurrentState() != GameState.IN_GAME &&
+            stateMachine.getCurrentState() != GameState.LOBBY) {
+            throw new IllegalStateException("Acción inválida en estado: " + stateMachine.getCurrentState());
+        }
+
         Player player = getAlivePlayer(playerId);
         Position targetPos = (Position) newPosition;
 
-        int cx = player.getPosition().x();
-        int cy = player.getPosition().y();
-        int dx = targetPos.x() - cx;
-        int dy = targetPos.y() - cy;
+        float cx = player.getPosition().x();
+        float cy = player.getPosition().y();
+        float dx = targetPos.x() - cx;
+        float dy = targetPos.y() - cy;
 
         if (dx == 0 && dy == 0) return;
 
-        // 1. Intento principal: Ir directo al objetivo
         if (gameMap.canMove(player.getPosition(), targetPos)) {
             player.updatePosition(targetPos);
             eventBus.publish(new PlayerMovedEvent(playerId, targetPos));
             return;
         }
 
-        // 2. Si chocamos, simulamos el deslizamiento (Vector Projection / Angle Probing)
-        // Calculamos la magnitud de la velocidad y el ángulo original en radianes
         double length = Math.hypot(dx, dy);
         double originalAngleRad = Math.atan2(dy, dx);
-
-        // Probamos desviar la dirección de movimiento poco a poco a ambos lados
-        // Empezamos con 15°, luego 30°, 45°, 60°, 75°, hasta 85° para bordear casi en paralelo
         int[] angleOffsetsDeg = {15, -15, 30, -30, 45, -45, 55, -55};
 
         for (int offsetDeg : angleOffsetsDeg) {
-            // Convertimos el desvío a radianes y se lo sumamos al ángulo original
             double offsetRad = Math.toRadians(offsetDeg);
             double testAngleRad = originalAngleRad + offsetRad;
 
-            // Calculamos la nueva posición X e Y con trigonometría básica
-            int testX = cx + (int) Math.round(length * Math.cos(testAngleRad));
-            int testY = cy + (int) Math.round(length * Math.sin(testAngleRad));
+            float testX = cx + (float) (length * Math.cos(testAngleRad));
+            float testY = cy + (float) (length * Math.sin(testAngleRad));
 
             Position testPos = new Position(testX, testY);
 
-            // Si este nuevo ángulo sí está libre de colisión...
             if (gameMap.canMove(player.getPosition(), testPos)) {
-                // Actualizamos al jugador y salimos del metodo
                 player.updatePosition(testPos);
                 eventBus.publish(new PlayerMovedEvent(playerId, testPos));
                 return;
@@ -200,60 +181,30 @@ public class GameSessionImpl implements GameSession {
         }
     }
 
-     /* ============================================================
-       ASESINATOS
-       ============================================================ */
-
-    /**
-     * Intenta realizar un asesinato.
-     *
-     * La sesión valida:
-     * - estado del juego
-     * - roles
-     * - vida de los jugadores
-     */
+    // --------------------------------------------------
+    // ASESINATOS, REPORTE Y VOTACIÓN
+    // --------------------------------------------------
 
     @Override
     public void attemptKill(PlayerId killerId, PlayerId victimId){
         requireState(GameState.IN_GAME);
-
         Player killer = getAlivePlayer(killerId);
         Player victim = getAlivePlayer(victimId);
 
-        if(killer.getRole() != Role.IMPOSTOR){
-            return;
-        }
+        if(killer.getRole() != Role.IMPOSTOR){ return; }
 
         victim.kill();
         eventBus.publish(new KillAttemptedEvent(killerId, victimId));
     }
 
-    /* ============================================================
-       REPORTE Y REUNIÓN
-       ============================================================ */
-
-    /**
-     * Reporta un cuerpo y activa una reunión.
-     */
-
     @Override
     public void reportBody(PlayerId reporter, PlayerId victim){
         requireState(GameState.IN_GAME);
-
-        stateMachine.transitionTo(GameState.MEETING); // Transición automática
+        stateMachine.transitionTo(GameState.MEETING);
         currentVotes.clear();
-
         eventBus.publish(new BodyReportedEvent(reporter, victim));
         eventBus.publish(new VotingStartedEvent());
     }
-
-    /* ============================================================
-       VOTACIÓN
-       ============================================================ */
-
-    /**
-     * Registra un voto durante una reunión.
-     */
 
     @Override
     public void castVote(Vote vote){
@@ -263,25 +214,17 @@ public class GameSessionImpl implements GameSession {
         eventBus.publish(new VoteCastEvent(vote.getVoterId(), vote.getTargetId()));
     }
 
-    /**
-     * Resuelve la votación actual.
-     */
     @Override
     public void resolveVoting(){
         requireState(GameState.MEETING);
-
-        // Lógica de conteo... (se mantiene igual)
-        // [Tu lógica de stream para elegir al expulsado]
-        PlayerId ejected = null; // Simplificado para el ejemplo
-
-        // Al terminar, volvemos al juego
+        PlayerId ejected = null;
         stateMachine.transitionTo(GameState.IN_GAME);
         eventBus.publish(new VotingResolvedEvent(ejected));
     }
 
-    /* ============================================================
-       CONSULTAS
-       ============================================================ */
+    // --------------------------------------------------
+    // CONSULTAS
+    // --------------------------------------------------
 
     @Override
     public GameState getCurrentState() {
@@ -293,37 +236,70 @@ public class GameSessionImpl implements GameSession {
         return Collections.unmodifiableCollection(players.values());
     }
 
-/* ============================================================
-       MÉTODOS AUXILIARES (PRIVADOS)
-       ============================================================ */
+    /* ============================================================
+     TAREAS TASK
+    ============================================================ */
+    @Override
+    public List<Task> getTasksForPlayer(PlayerId playerId) {
+        Set<TaskId> assignedIds = assignedTaskIdsByPlayer.getOrDefault(playerId, Set.of());
+        return assignedIds.stream()
+            .map(allTasks::get)
+            .filter(Objects::nonNull)
+            .toList();
+    }
 
-    /**
-     * Válida que el juego esté en un estado específico.
-     */
+    private boolean isTaskPendingFor(PlayerId playerId, TaskId taskId) {
+        return assignedTaskIdsByPlayer.getOrDefault(playerId, Set.of()).contains(taskId) &&
+            !completedTaskIdsByPlayer.getOrDefault(playerId, Set.of()).contains(taskId);
+    }
+
+    @Override
+    public void initiateTask(PlayerId playerId, TaskId taskId) {
+        requireState(GameState.IN_GAME);
+
+        if (!isTaskPendingFor(playerId, taskId)) return;
+
+        Task task = allTasks.get(taskId);
+        if (task == null) return;
+
+        Player player = players.get(playerId);
+        if (!task.canInteract(playerId, player.getPosition())) return;
+
+        System.out.println("[initiateTask] ABRIENDO minijuego: " + task.getName());
+        MinigameScreen screen = task.getMinigameProvider().createScreen(playerId, task);
+        engine.setActiveMinigame(screen);
+        eventBus.publish(new TaskInteractionStartedEvent(playerId, task.getId()));
+    }
+
+    public boolean isTaskCompleted(PlayerId playerId, TaskId taskId) {
+        return completedTaskIdsByPlayer
+            .getOrDefault(playerId, Set.of())
+            .contains(taskId);
+    }
+
+    public TaskProgressTracker getProgressTracker() { return progressTracker; }
+
+    public List<Task> getAllTasksForPlayer(PlayerId playerId) {
+        Set<TaskId> assigned  = assignedTaskIdsByPlayer.getOrDefault(playerId, Set.of());
+        Set<TaskId> completed = completedTaskIdsByPlayer.getOrDefault(playerId, Set.of());
+
+        return Stream.concat(assigned.stream(), completed.stream())
+            .distinct()
+            .map(allTasks::get)
+            .filter(Objects::nonNull)
+            .toList();
+    }
+
+    // --------------------------------------------------
+    // MÉTODOS AUXILIARES Y NUESTROS FIXES DEL LOBBY
+    // --------------------------------------------------
+
     private void requireState(GameState expected) {
         if (stateMachine.getCurrentState() != expected) {
-            throw new IllegalStateException(
-                    "Acción inválida en estado: " + stateMachine.getCurrentState()
-            );
+            throw new IllegalStateException("Acción inválida en estado: " + stateMachine.getCurrentState());
         }
     }
 
-
-    /**
-     * Obtiene un jugador válido y vivo.
-     * Este méthod centraliza una invariante del juego:
-     * muchas acciones solo pueden ser realizadas por jugadores vivos.
-     *
-     * Centralizar esta lógica:
-     * - evita duplicación de código
-     * - mejora legibilidad
-     * - facilita mantenimiento y explicación académica
-     *
-     * @param playerId identificador del jugador
-     * @return jugador vivo
-     * @throws IllegalArgumentException si el jugador no existe
-     * @throws IllegalStateException si el jugador está muerto
-     */
     private Player getAlivePlayer(PlayerId playerId) {
         Player player = players.get(playerId);
         if (player == null) throw new IllegalArgumentException("Jugador inexistente");
@@ -331,6 +307,31 @@ public class GameSessionImpl implements GameSession {
         return player;
     }
 
+    // --- MÉTODOS DE RED QUE MANTUVIMOS ---
+    public void removePlayer(PlayerId id) {
+        if (this.players != null) {
+            this.players.remove(id);
+        }
+    }
 
+    public void resetToLobby() {
+        stateMachine.reset();
+        currentVotes.clear();
 
+        // Limpiamos las tareas al volver al lobby
+        allTasks.clear();
+        assignedTaskIdsByPlayer.clear();
+        completedTaskIdsByPlayer.clear();
+
+        for (Player p : players.values()) {
+            if (p instanceof PlayerImpl pi) {
+                pi.revive();
+                pi.assignRole(Role.CREWMATE);
+            }
+        }
+    }
+
+    public void setGameMap(GameMap gameMap) {
+        this.gameMap = gameMap;
+    }
 }

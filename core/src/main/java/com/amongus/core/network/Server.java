@@ -8,37 +8,27 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-public class Server extends Thread{
-    //Lista sincronizada para evitar errores si alguien entra y sale
-    //mientras se envían los mensajes
+public class Server extends Thread {
     private final List<PlayerHandler> clients = Collections.synchronizedList(new ArrayList<>());
+    private ServerSocket serverSocket; // Atributo de clase
 
     @Override
     public void run() {
-        ServerSocket server = null;
         try {
-            // Intentamos abrir el puerto 5000
-            server = Gdx.net.newServerSocket(Net.Protocol.TCP, 5000, null);
+            // Asignamos a la variable de clase
+            serverSocket = Gdx.net.newServerSocket(Net.Protocol.TCP, 5000, null);
             System.out.println("[SERVIDOR] Servidor se ha iniciado en el puerto 5000");
 
             while(true) {
-                // Espera hasta que se conecte un cliente
-                Socket socketClient = server.accept(null);
-
-                // Se inicializa el cliente y se añade a la lista
+                Socket socketClient = serverSocket.accept(null);
                 PlayerHandler newPlayer = new PlayerHandler(socketClient, this);
                 clients.add(newPlayer);
                 newPlayer.start();
-
                 System.out.println("[SERVIDOR] Nuevo jugador conectado. Total: " + clients.size());
             }
         } catch (Exception e) {
-            // ¡SI EL PUERTO ESTÁ OCUPADO, CAEMOS AQUÍ EN LUGAR DE CERRAR EL JUEGO!
-            System.err.println("==================================================");
-            System.err.println(" ERROR CRÍTICO DEL SERVIDOR: No se pudo abrir el puerto 5000.");
-            System.err.println(" Es probable que otra instancia del juego siga corriendo de fondo.");
-            System.err.println(" Detalle técnico: " + e.getMessage());
-            System.err.println("==================================================");
+            // Este catch atrapará el error cuando cerremos el socket desde fuera
+            System.out.println("Servidor detenido o error en puerto: " + e.getMessage());
         }
     }
 
@@ -51,6 +41,17 @@ public class Server extends Thread{
                     p.enviarMensaje(mensaje);
                 }
             }
+        }
+    }
+
+    public void detener() {
+        try {
+            if (serverSocket != null) {
+                serverSocket.dispose();
+                System.out.println("Recursos del servidor liberados.");
+            }
+        } catch (Exception e) {
+            System.out.println("Error al detener servidor: " + e.getMessage());
         }
     }
 

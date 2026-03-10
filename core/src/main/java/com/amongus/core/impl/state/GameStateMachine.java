@@ -21,19 +21,22 @@ public class GameStateMachine {
                     "Invalid state transition: " + currentState + " -> " + nextState
             );
         }
-            this.currentState = nextState;
-        }
+        this.currentState = nextState;
+    }
 
 
     private boolean validTransition(GameState from, GameState to){
-            return switch (from) {
-                case LOBBY -> to == GameState.IN_GAME;
-                case IN_GAME -> to == GameState.MEETING || to == GameState.ENDED;
-                case MEETING -> to == GameState.IN_GAME || to == GameState.ENDED;
-                case ENDED -> false;
-            };
-        }
+        return switch (from) {
+            case LOBBY -> to == GameState.IN_GAME;
+            case IN_GAME -> to == GameState.MEETING || to == GameState.ENDED;
+            case MEETING -> to == GameState.IN_GAME || to == GameState.ENDED;
+            case ENDED -> false;
+        };
     }
+    public void reset() {
+        this.currentState = GameState.LOBBY;
+    }
+}
 
 
 

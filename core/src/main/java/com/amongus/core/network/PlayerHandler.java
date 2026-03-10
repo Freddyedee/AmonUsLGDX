@@ -32,24 +32,21 @@ public class PlayerHandler extends Thread{
         }
     }
 
-
     @Override
     public void run() {
-
         try {
             while (true) {
-                // Escuchar lo que el jugador manda
                 String mensaje = in.readUTF();
-                // El servidor le reenvía esto a todos los demás
-                server.enviarATodos(mensaje,this);
+                server.enviarATodos(mensaje, this);
             }
         } catch (IOException e) {
             System.out.println("Un jugador se ha desconectado.");
         } finally {
+            // MUY IMPORTANTE: Se borra de la lista del servidor
+            server.DeleteClient(this);
             try {
                 in.close();
                 out.close();
-                // Le avisa al servidor para quitarlo de la lista de clientes
             } catch (IOException ex) {
                 ex.printStackTrace();
             }

@@ -3,22 +3,28 @@ package com.amongus.core.view.screens;
 import com.amongus.core.AmongUsGame;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Screen;
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.graphics.Pixmap;
+import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.Texture.TextureFilter;
+import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator;
+import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator.FreeTypeFontParameter;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.Stage;
-import com.badlogic.gdx.scenes.scene2d.ui.Label;
-import com.badlogic.gdx.scenes.scene2d.ui.Skin;
-import com.badlogic.gdx.scenes.scene2d.ui.Table;
-import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
+import com.badlogic.gdx.scenes.scene2d.ui.*;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
+import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import com.badlogic.gdx.utils.Align;
-import com.badlogic.gdx.utils.viewport.ScreenViewport;
+import com.badlogic.gdx.utils.viewport.FitViewport;
 
 public class HelpScreen implements Screen {
-
     private final AmongUsGame game;
     private Stage stage;
     private Skin skin;
+    private Texture bgTexture;
+    private Texture bgBoxTexture;
 
     public HelpScreen(AmongUsGame game) {
         this.game = game;
@@ -26,22 +32,66 @@ public class HelpScreen implements Screen {
 
     @Override
     public void show() {
-        stage = new Stage(new ScreenViewport());
+        stage = new Stage(new FitViewport(1280, 720));
         Gdx.input.setInputProcessor(stage);
 
-        // Cargamos el skin Comic
+        // 1. IMAGEN DE FONDO GLOBAL
+        bgTexture = new Texture(Gdx.files.internal("ui/Imagen_Menu.png"));
+        Image bgImage = new Image(bgTexture);
+        bgImage.setSize(1280, 720);
+        stage.addActor(bgImage);
+
         skin = new Skin(Gdx.files.internal("ui/comic/comic-ui.json"));
 
-        Table table = new Table();
-        table.setFillParent(true);
-        // table.setDebug(true);
+        // 2. FUENTES MÁS PEQUEÑAS
+        FreeTypeFontGenerator genRegular = new FreeTypeFontGenerator(Gdx.files.internal("ui/comic/fuente-regular.ttf"));
+        FreeTypeFontParameter paramRegular = new FreeTypeFontParameter();
+        paramRegular.size = 24; // ANTES 28 [cite: 556]
+        paramRegular.minFilter = TextureFilter.Linear;
+        paramRegular.magFilter = TextureFilter.Linear;
+        BitmapFont fontRegular = genRegular.generateFont(paramRegular);
+        genRegular.dispose();
+
+        FreeTypeFontGenerator genBold = new FreeTypeFontGenerator(Gdx.files.internal("ui/comic/fuente-bold.ttf"));
+        FreeTypeFontParameter paramBold = new FreeTypeFontParameter();
+        paramBold.size = 40; // ANTES 50 [cite: 558]
+        paramBold.minFilter = TextureFilter.Linear;
+        paramBold.magFilter = TextureFilter.Linear;
+        BitmapFont fontBold = genBold.generateFont(paramBold);
+        genBold.dispose();
+
+        // Aplicamos fuentes
+        skin.add("font-regular", fontRegular, BitmapFont.class);
+        skin.add("font-bold", fontBold, BitmapFont.class);
+        skin.get(Label.LabelStyle.class).font = fontRegular;
+        skin.get(Label.LabelStyle.class).fontColor = Color.WHITE; // Fuerza color blanco para los párrafos
+        skin.get(TextButton.TextButtonStyle.class).font = fontRegular;
+
+        Label.LabelStyle titleStyle = new Label.LabelStyle(skin.get(Label.LabelStyle.class));
+        titleStyle.font = fontBold;
+        titleStyle.fontColor = Color.WHITE;
+
+        // 3. CREAR EL RECUADRO NEGRO SEMITRANSPARENTE
+        Pixmap pixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
+        pixmap.setColor(0f, 0f, 0f, 0.75f); // Negro al 75% de opacidad
+        pixmap.fill();
+        bgBoxTexture = new Texture(pixmap);
+        pixmap.dispose();
+
+        // 4. DOBLE TABLA (Raíz y Contenido)
+        Table rootTable = new Table();
+        rootTable.setFillParent(true); // Ocupa todo el 1280x720 para poder centrar
+
+        Table contentTable = new Table();
+        // Le asignamos el fondo oscuro
+        contentTable.setBackground(new TextureRegionDrawable(bgBoxTexture));
+        contentTable.pad(40f); // Un margen interno agradable para que el texto respire
 
         // ── Título ──
-        Label titleLabel = new Label("COMO JUGAR", skin);
-        titleLabel.setFontScale(1.5f);
+        Label titleLabel = new Label("COMO JUGAR", titleStyle);
         titleLabel.setAlignment(Align.center);
 
-        // ── Reglas del Juego (Extraídas del documento del proyecto) ──
+        // ── Reglas del Juego ──
         String reglas =
             "[ TRIPULANTES ]\n" +
                 "Tu objetivo es ganar completando todas las tareas asignadas o descubriendo y expulsando al impostor mediante votacion.\n\n" +
@@ -55,56 +105,37 @@ public class HelpScreen implements Screen {
 
         Label rulesLabel = new Label(reglas, skin);
         rulesLabel.setAlignment(Align.center);
-        rulesLabel.setWrap(true); // Permite que el texto baje a la siguiente línea si es muy largo
+        rulesLabel.setWrap(true);
 
         // ── Botón de regreso ──
         TextButton btnVolver = new TextButton("Volver", skin);
         btnVolver.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                // Regresamos al menú principal
                 game.setScreen(new MainMenuScreen(game));
                 dispose();
             }
         });
 
-        // ── Organización en la Tabla ──
-        table.add(titleLabel).padBottom(20).row();
+        // 5. AGREGAR A LA TABLA DE CONTENIDO (En lugar de la tabla principal)
+        contentTable.add(titleLabel).padBottom(30).row();
+        contentTable.add(rulesLabel).width(800).padBottom(40).row(); // Reduje un poco el ancho [cite: 569]
+        contentTable.add(btnVolver).width(200).height(50); // Botón un poco más pequeño
 
-        // Le damos un ancho máximo al texto (ej. 600 píxeles) para que el setWrap(true) funcione correctamente
-        table.add(rulesLabel).width(600).padBottom(30).row();
-
-        table.add(btnVolver).width(200).height(50);
-
-        stage.addActor(table);
+        // 6. ENSAMBLAR
+        rootTable.add(contentTable); // Centra el recuadro negro en la pantalla
+        stage.addActor(rootTable);
     }
 
-    @Override
-    public void render(float delta) {
+    @Override public void render(float delta) {
         Gdx.gl.glClearColor(0.1f, 0.1f, 0.15f, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
-
         stage.act(Math.min(Gdx.graphics.getDeltaTime(), 1 / 30f));
         stage.draw();
     }
-
-    @Override
-    public void resize(int width, int height) {
-        stage.getViewport().update(width, height, true);
-    }
-
-    @Override
-    public void pause() {}
-
-    @Override
-    public void resume() {}
-
-    @Override
-    public void hide() {}
-
-    @Override
-    public void dispose() {
-        stage.dispose();
-        skin.dispose();
-    }
+    @Override public void resize(int width, int height) { stage.getViewport().update(width, height, true); }
+    @Override public void pause() {}
+    @Override public void resume() {}
+    @Override public void hide() {}
+    @Override public void dispose() { stage.dispose(); skin.dispose(); if (bgBoxTexture != null) bgBoxTexture.dispose();}
 }
