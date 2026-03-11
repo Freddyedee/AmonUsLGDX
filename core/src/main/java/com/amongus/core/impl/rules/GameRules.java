@@ -15,10 +15,6 @@ public class GameRules {
         return players.size() >= 4;
     }
 
-    public static boolean canKill(Player killer){
-        return killer.alive() && killer.getRole() == Role.IMPOSTOR;
-    }
-
     public static boolean gameOver(Collection<Player> players){
         long impostorsAlive = players.stream()
                 .filter(player-> player.alive() && player.getRole() == Role.IMPOSTOR)

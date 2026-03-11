@@ -2,22 +2,25 @@ package com.amongus.core.impl.engine;
 
 import com.amongus.core.api.Vote.Vote;
 import com.amongus.core.api.events.EventBus;
+import com.amongus.core.api.events.KillAttemptedEvent;
+import com.amongus.core.api.events.TaskCompletedEvent;
 import com.amongus.core.api.map.GameMap;
 import com.amongus.core.api.map.MapType;
-import com.amongus.core.api.minigame.MinigameScreen; // Nuevo de Eliuber
+import com.amongus.core.api.minigame.MinigameScreen;
 import com.amongus.core.api.player.Player;
 import com.amongus.core.api.player.PlayerId;
 import com.amongus.core.api.player.Role;
 import com.amongus.core.api.player.SkinColor;
 import com.amongus.core.api.session.GameSession;
-import com.amongus.core.api.session.TaskProgressTracker; // Nuevo de Eliuber
+import com.amongus.core.api.session.TaskProgressTracker;
 import com.amongus.core.api.state.GameState;
-import com.amongus.core.api.task.Task; // Nuevo de Eliuber
-import com.amongus.core.api.task.TaskId; // Nuevo de Eliuber
+import com.amongus.core.api.task.Task;
+import com.amongus.core.api.task.TaskId;
 import com.amongus.core.impl.event.EventBusImpl;
 import com.amongus.core.impl.map.MaskCollisionMap;
 import com.amongus.core.impl.network.GameClient;
 import com.amongus.core.impl.player.ColorAssigner;
+import com.amongus.core.impl.rules.GameRules;
 import com.amongus.core.impl.session.GameSessionImpl;
 import com.amongus.core.model.Position;
 import com.amongus.core.view.GameSnapshot;
@@ -30,8 +33,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import static java.util.UUID.fromString;
-
 public class GameEngine {
 
     private final UUID sessionId;
@@ -43,6 +44,14 @@ public class GameEngine {
     private final VotingSystemImpl votingSystem = new VotingSystemImpl();
     private String gameResult = null;
     private final ColorAssigner colorAssigner = new ColorAssigner();
+    // --- VARIABLES DE REUNIÓN ---
+    private PlayerId currentReporterId = null;
+    private PlayerId currentVictimId = null;
+
+    public PlayerId getCurrentReporterId() { return currentReporterId; }
+    public boolean isEmergencyMeeting() {
+        return currentVictimId != null && currentVictimId.value().equals(java.util.UUID.fromString("00000000-0000-0000-0000-000000000000"));
+    }
 
     // Pantalla de minijuego (Nuevo de Eliuber)
     private MinigameScreen activeMinigame = null;
@@ -55,9 +64,16 @@ public class GameEngine {
         this.eventBus = new EventBusImpl();
         this.mapType = mapType;
 
-        // Pasamos 1500x1000 para la Sala de Espera
         this.gameMap = new MaskCollisionMap("mapas/SalaEsperaColisiones.png");
         this.session = new GameSessionImpl(sessionId, eventBus, gameMap, this);
+
+        // Escuchamos eventos clave para evaluar si el juego terminó
+        this.eventBus.subscribe(KillAttemptedEvent.class, event -> {
+            checkWinConditions();
+        });
+        this.eventBus.subscribe(TaskCompletedEvent.class, event -> {
+            checkWinConditions();
+        });
     }
 
     // Getter para que la vista gráfica sepa qué dibujar
@@ -121,7 +137,7 @@ public class GameEngine {
         return session.getCurrentState();
     }
 
-    // Nuevo método de Eliuber para interactuar con tareas
+    // Nuevo metodo para interactuar con tareas
     public void initiateTask(TaskId taskId) {
         session.initiateTask(localPlayerId, taskId);
     }
@@ -134,6 +150,7 @@ public class GameEngine {
         Player player = new PlayerImpl(newId, name, assignedColor);
         session.addPlayer(player);
         if (this.localPlayerId == null) this.localPlayerId = newId;
+        forceMovePlayer(newId, new Position(1920f, 1080f));
         return newId;
     }
 
@@ -142,6 +159,7 @@ public class GameEngine {
         SkinColor assignedColor = colorAssigner.assignForce(networkColor);
         Player player = new PlayerImpl(newId, name, assignedColor);
         session.addPlayer(player);
+        forceMovePlayer(newId, new Position(1920f, 1080f));
         return newId;
     }
 
@@ -172,7 +190,7 @@ public class GameEngine {
             killer.getPosition().x() - victim.getPosition().x(),
             killer.getPosition().y() - victim.getPosition().y()
         );
-        if (distance <= 150.0) {
+        if (distance <= 100.0) {
             session.attemptKill(killerId, victimId);
         }
     }
@@ -186,6 +204,8 @@ public class GameEngine {
         for (Player p : players) {
             assignRole(p.getId(), p.getId().equals(impostorId) ? Role.IMPOSTOR : Role.CREWMATE);
             session.movePlayer(p.getId(), spawnPoint);
+            forceMovePlayer(p.getId(), spawnPoint);
+            setPlayerMoving(p.getId(), false, 1);
         }
 
         transitionToGameMap();
@@ -203,6 +223,8 @@ public class GameEngine {
         for (Player p : session.getPlayers()) {
             assignRole(p.getId(), p.getId().equals(impostorId) ? Role.IMPOSTOR : Role.CREWMATE);
             session.movePlayer(p.getId(), spawnPoint);
+            forceMovePlayer(p.getId(), spawnPoint);
+            setPlayerMoving(p.getId(), false, 1);
         }
         transitionToGameMap();
         session.startGame();
@@ -243,7 +265,16 @@ public class GameEngine {
     }
 
     public void reportBody(PlayerId reporterId, PlayerId victimId) {
-        session.reportBody(reporterId, victimId);
+        this.currentReporterId = reporterId;
+        this.currentVictimId = victimId;
+
+        if (isEmergencyMeeting()) {
+            if (session instanceof GameSessionImpl) {
+                ((GameSessionImpl) session).callEmergencyMeeting(reporterId);
+            }
+        } else {
+            session.reportBody(reporterId, victimId);
+        }
     }
 
     public PlayerId getLocalPlayerId() {
@@ -261,14 +292,18 @@ public class GameEngine {
 
         session.resolveVoting();
 
-        long alive = session.getPlayers().stream().filter(Player::alive).count();
-        long impostors = session.getPlayers().stream().filter(Player::alive)
-            .filter(p->p.getRole() == Role.IMPOSTOR).count();
+        checkWinConditions();
 
-        if(impostors >= alive - impostors){
-            gameResult = "IMPOSTOR";
-        }else if(impostors == 0){
-            gameResult = "CREWMATE";
+        // Limpiamos los datos de la reunión
+        this.currentReporterId = null;
+        this.currentVictimId = null;
+
+        // Teletransportamos a todos vivos a la mesa inicial al terminar
+        Position spawnPoint = getSpawnPositionForMap();
+        for (Player p : session.getPlayers()) {
+            if (p.alive()) {
+                forceMovePlayer(p.getId(), spawnPoint);
+            }
         }
 
         return expelled;
@@ -302,7 +337,18 @@ public class GameEngine {
 
     public void restartToLobby() {
         this.gameResult = null;
+        this.currentReporterId = null;
+        this.currentVictimId = null;
         votingSystem.clearVotes();
+
+        // 2. Teletransportamos a TODOS al centro del autobús
+        Position lobbySpawn = new Position(1920f, 1080f);
+        for (Player p : session.getPlayers()) {
+            // Los mandamos al centro
+            forceMovePlayer(p.getId(), lobbySpawn);
+            // Les apagamos cualquier estado de caminar fantasma
+            setPlayerMoving(p.getId(), false, 1);
+        }
 
         if (this.gameMap instanceof MaskCollisionMap) {
             ((MaskCollisionMap) this.gameMap).dispose();
@@ -315,9 +361,6 @@ public class GameEngine {
             ((GameSessionImpl) session).resetToLobby();
         }
 
-        for (Player p : session.getPlayers()) {
-            movePlayer(p.getId(), new Position(1920f, 1080f));
-        }
     }
 
     // --- NUESTROS MÉTODOS DE RED QUE MANTUVIMOS INTACTOS ---
@@ -358,7 +401,67 @@ public class GameEngine {
             .ifPresent(pi -> pi.setSkinColor(newColor));
     }
 
-    // --- MÉTODOS DE MINIJUEGOS (Nuevos de Eliuber) ---
+    // --- Metodo para verificar condiciones de victoria ---
+    public void checkWinConditions() {
+        if (com.amongus.debug.DebugConfig.IGNORE_WIN_CONDITIONS) return;
+        if (gameResult != null) return; // Si ya terminó, no hacemos nada
+
+        // 1. Usamos tu clase GameRules para verificar muertes/votos
+        if (GameRules.gameOver(session.getPlayers())) {
+            long impostorsAlive = session.getPlayers().stream()
+                .filter(p -> p.alive() && p.getRole() == Role.IMPOSTOR)
+                .count();
+
+            if (impostorsAlive == 0) {
+                gameResult = "CREWMATE";
+                System.out.println("[FIN] ¡Los tripulantes ganan por expulsar al impostor!");
+            } else {
+                gameResult = "IMPOSTOR";
+                System.out.println("[FIN] ¡El impostor gana por aniquilación!");
+            }
+            return;
+        }
+
+        // 2. Verificamos victoria por tareas completadas
+        TaskProgressTracker tracker = session.getProgressTracker();
+        if (tracker != null && tracker.getTotal() > 0 && tracker.getPending() == 0) {
+            gameResult = "CREWMATE";
+            System.out.println("[FIN] ¡Los tripulantes ganan por completar todas las tareas!");
+        }
+    }
+
+    /**
+     * Spawnea un bot de prueba que no se mueve.
+     * Útil para probar asesinatos y reportes en solitario.
+     */
+    public void spawnTestingBot(String name, SkinColor color) {
+        // Generamos un ID manual para el bot
+        PlayerId botId = new PlayerId(java.util.UUID.randomUUID());
+        Player bot = new PlayerImpl(botId, "[BOT] " + name, color);
+
+        session.addPlayer(bot);
+
+        session.getPlayers().stream()
+            .filter(p -> p.getId().equals(localPlayerId))
+            .findFirst()
+            .ifPresent(me -> {
+                forceMovePlayer(botId, new Position(me.getPosition().x() + 100, me.getPosition().y() + 100));
+            });
+
+        System.out.println("[DEBUG] Bot '" + name + "' invocado para pruebas.");
+    }
+
+    /**
+     * Llama a este metodo cuando llegue un mensaje de red de que alguien terminó una tarea.
+     * Esto actualizará la barra de progreso de TODOS los clientes simultáneamente.
+     */
+    public void notifyTaskCompletedByNetwork(PlayerId playerId, TaskId taskId) {
+        // Al publicar este evento, el GameSessionImpl de quien lo reciba sumará 1 a la barra verde
+        // y verificará si con esta tarea se ganó la partida.
+        eventBus.publish(new TaskCompletedEvent(playerId, taskId));
+    }
+
+    // --- MÉTODOS DE MINIJUEGOS ---
     public void setActiveMinigame(MinigameScreen screen) {
         this.activeMinigame = screen;
         if (screen != null) screen.show();

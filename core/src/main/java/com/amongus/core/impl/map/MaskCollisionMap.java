@@ -48,7 +48,6 @@ public class MaskCollisionMap implements GameMap {
     @Override
     public boolean canMove(Position from, Position to) {
         // ── BYPASS DE COLISIÓN PARA ALCANTARILLAS ──
-        // Si el destino es una alcantarilla (margen de 5px), teletranspórtalo sin importar los muros
         for (List<Position> network : ventNetworks) {
             for (Position vent : network) {
                 if (Math.abs(vent.x() - to.x()) < 5.0f && Math.abs(vent.y() - to.y()) < 5.0f) {
@@ -57,18 +56,57 @@ public class MaskCollisionMap implements GameMap {
             }
         }
 
-        int toX = (int) to.x();
-        int toY = (int) to.y();
+        // ── SISTEMA ANTI-TÚNEL DE ALTA PRECISIÓN ──
+        float dx = to.x() - from.x();
+        float dy = to.y() - from.y();
+        float distance = (float) Math.hypot(dx, dy);
 
-        int margenIzquierdo = toX - 12;
-        int margenDerecho   = toX + 12;
-        int basePies = toY;
-        int topePies = toY + 12;
+        if (distance == 0) return true;
 
-        return isWalkable(margenIzquierdo, basePies) &&
-            isWalkable(margenDerecho, basePies) &&
-            isWalkable(margenIzquierdo, topePies) &&
-            isWalkable(margenDerecho, topePies);
+        // Paso de 1 píxel. Precisión milimétrica o pixel a pixel
+        float stepSize = 1f;
+        int steps = (int) Math.ceil(distance / stepSize);
+
+        for (int i = 1; i <= steps; i++) {
+            float t = (float) i / steps;
+
+            float currentX = from.x() + dx * t;
+            float currentY = from.y() + dy * t;
+
+            int cX = (int) currentX;
+            int cY = (int) currentY;
+
+            // Hitbox de los pies dividida en 9 sensores (3x3)
+            int margenIzquierdo = cX - 12;
+            int centroX         = cX;
+            int margenDerecho   = cX + 12;
+
+            int basePies  = cY;
+            int medioPies = cY + 6;
+            int topePies  = cY + 12;
+
+            // Comprobamos los 9 puntos. Si ALGUNO toca negro, bloqueamos.
+            if (!(
+                // Fila inferior
+                isWalkable(margenIzquierdo, basePies) &&
+                    isWalkable(centroX, basePies) &&
+                    isWalkable(margenDerecho, basePies) &&
+
+                    // Fila central (¡El punto ciego que te estaba fallando!)
+                    isWalkable(margenIzquierdo, medioPies) &&
+                    isWalkable(centroX, medioPies) &&
+                    isWalkable(margenDerecho, medioPies) &&
+
+                    // Fila superior
+                    isWalkable(margenIzquierdo, topePies) &&
+                    isWalkable(centroX, topePies) &&
+                    isWalkable(margenDerecho, topePies)
+            )) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private boolean isWalkable(int worldX, int worldY) {

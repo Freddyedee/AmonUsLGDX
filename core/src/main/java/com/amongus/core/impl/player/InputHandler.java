@@ -1,6 +1,7 @@
 package com.amongus.core.impl.player;
 
 import com.amongus.core.api.actions.ActionSender;
+import com.amongus.core.api.map.MapType;
 import com.amongus.core.api.player.PlayerId;
 import com.amongus.core.api.state.GameState;
 import com.amongus.core.impl.actions.*;
@@ -26,12 +27,21 @@ public class InputHandler {
     private static final float KILL_RANGE = 150f;
     private static final float KILL_COOLDOWN = 15.0f;
     private static final float REPORT_RANGE = 120f;
+    // Posiciones de los botones de emergencia
+    private static final Position EMERGENCY_MAP1 = new Position(339f, 1240f);
+    private static final Position EMERGENCY_MAP2 = new Position(2331f, 1275f);
+    private static final float EMERGENCY_RADIUS = 150f;
 
     private int keyKill = Input.Keys.Q;
     private int keyReport = Input.Keys.F;
     private int keySkip = Input.Keys.S;
     private int keyVoteConfirm = Input.Keys.ENTER;
     private int keyVent = Input.Keys.V;
+    private final java.util.Set<PlayerId> staleCorpses = new java.util.HashSet<>();
+
+    private Position getEmergencyButtonPos() {
+        return engine.getMapType() == MapType.MAPA_1 ? EMERGENCY_MAP1 : EMERGENCY_MAP2;
+    }
 
     private int direccion = 1;
     private float killCooldown = 0;
@@ -59,8 +69,9 @@ public class InputHandler {
 
         spectatedPlayerId = localPlayerId;
 
-        // ── LÓGICA DE CAMBIO DE COLOR EN EL LOBBY (De Freddy) ──
+        // ── LÓGICA DE CAMBIO DE COLOR EN EL LOBBY  ──
         if (snapshot.getState() == GameState.LOBBY) {
+            staleCorpses.clear(); // Limpiamos la memoria de cuerpos al iniciar partida
             if (Gdx.input.isKeyJustPressed(Input.Keys.C)) {
                 com.amongus.core.api.player.SkinColor[] colors = com.amongus.core.api.player.SkinColor.values();
                 int currentIndex = 0;
@@ -112,14 +123,20 @@ public class InputHandler {
         handleKillInput(snapshot);
         handleReportInput(snapshot);
 
-        // --- INTERACCIÓN CON TAREAS (De Eliuber) ---
-        handleTaskInput(snapshot);
+        // --- INTERACCIÓN CON TAREAS (Teclado) ---
+        // Restauramos el uso de la tecla 'E' (como el Among Us original)
+        if (Gdx.input.isKeyJustPressed(Input.Keys.E)) {
+            executeInteraction(snapshot);
+        }
     }
-
     public void handleMeetingInput(GameSnapshot snapshot, float meetingTimer) {
+        for (PlayerView pv : snapshot.getPlayers()) {
+            if (!pv.isAlive()) {
+                staleCorpses.add(pv.getId());
+            }
+        }
         handleVoteInput(snapshot, meetingTimer);
     }
-
     private void handleMovement(float delta) {
         float speed = 250f;
         float dx = 0, dy = 0;
@@ -249,7 +266,7 @@ public class InputHandler {
         PlayerView me = findLocalPlayer(snapshot);
         if (me == null) return null;
         for (PlayerView pv : snapshot.getPlayers()) {
-            if (pv.isAlive() || pv.getId().equals(localPlayerId)) continue;
+            if (pv.isAlive() || pv.getId().equals(localPlayerId) || staleCorpses.contains(pv.getId())) continue;
             float dist = Vector2.dst(me.getPosition().x(), me.getPosition().y(), pv.getPosition().x(), pv.getPosition().y());
             if (dist < REPORT_RANGE) return pv;
         }
@@ -274,17 +291,27 @@ public class InputHandler {
         }
     }
 
-    // --- NUEVO: MÉTODO DE TAREAS (De Eliuber) ---
-    private void handleTaskInput(GameSnapshot snapshot) {
-        if (!Gdx.input.isKeyJustPressed(Input.Keys.E)) return;
-
+    // Cambiamos el nombre y añadimos la lógica de prioridad
+    public void executeInteraction(GameSnapshot snapshot) {
         PlayerView me = findLocalPlayer(snapshot);
-        if (me == null) return;
+        if (me == null || !me.isAlive()) return;
 
+        // --- 1. PRIORIDAD: BOTÓN DE EMERGENCIA ---
+        Position emPos = getEmergencyButtonPos();
+        if (Vector2.dst(me.getPosition().x(), me.getPosition().y(), emPos.x(), emPos.y()) <= EMERGENCY_RADIUS) {
+            reporterId = localPlayerId;
+            reportedCorpseId = null;
+            // Usamos el ReportAction con el "código secreto" para que viaje por red sin crear paquetes nuevos
+            PlayerId emergencyId = new PlayerId(java.util.UUID.fromString("00000000-0000-0000-0000-000000000000"));
+            actionSender.send(new ReportAction(localPlayerId, emergencyId));
+            return; // Cortamos para que no abra tareas
+        }
+
+        // --- 2. SECUNDARIO: TAREAS ---
         snapshot.getTasks().stream()
             .filter(tv -> Vector2.dst(
                 me.getPosition().x(), me.getPosition().y(),
-                tv.getPosition().x(), tv.getPosition().y()) <= 150f)
+                tv.getPosition().x(), tv.getPosition().y()) <= 50f)
             .min(Comparator.comparingDouble(tv -> Vector2.dst(
                 me.getPosition().x(), me.getPosition().y(),
                 tv.getPosition().x(), tv.getPosition().y())))
@@ -297,6 +324,22 @@ public class InputHandler {
 
     private PlayerView findLocalPlayer(GameSnapshot snapshot) {
         return snapshot.getPlayers().stream().filter(p -> p.getId().equals(localPlayerId)).findFirst().orElse(null);
+    }
+
+    // Metodo que evalúa si hay una tarea cerca
+    public boolean canUse(GameSnapshot snapshot) {
+        PlayerView me = findLocalPlayer(snapshot);
+        if (me == null || !me.isAlive()) return false;
+
+        // 1. Verifica si está cerca de una tarea
+        boolean nearTask = snapshot.getTasks().stream()
+            .anyMatch(tv -> Vector2.dst(me.getPosition().x(), me.getPosition().y(), tv.getPosition().x(), tv.getPosition().y()) <= 50f);
+
+        // 2. Verifica si está cerca de la mesa de emergencia
+        Position emPos = getEmergencyButtonPos();
+        boolean nearEmergency = Vector2.dst(me.getPosition().x(), me.getPosition().y(), emPos.x(), emPos.y()) <= EMERGENCY_RADIUS;
+
+        return nearTask || nearEmergency;
     }
 
     public int getDireccion() { return direccion; }

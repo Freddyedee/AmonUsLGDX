@@ -49,7 +49,7 @@ public class GameScreen implements Screen {
     private DebugRenderer debugRenderer;
     private DebugEndGame debugEndGame;
     private boolean showDebug = false;
-    private boolean showDebugEndGame = false;
+    private boolean showDebugEndGame = true;
 
     private boolean isMenuOpen = false;
     private int keyEscape = Input.Keys.ESCAPE;
@@ -115,6 +115,17 @@ public class GameScreen implements Screen {
     public void render(float delta) {
         GameSnapshot snapshot = engine.getSnapshot();
 
+        // ── ATAJOS DE DEBUG (Solo para desarrollo) ──
+        if (Gdx.input.isKeyJustPressed(Input.Keys.F1)) {
+            com.amongus.debug.DebugConfig.IGNORE_WIN_CONDITIONS = !com.amongus.debug.DebugConfig.IGNORE_WIN_CONDITIONS;
+            System.out.println("[DEBUG] Ignorar Victorias: " + com.amongus.debug.DebugConfig.IGNORE_WIN_CONDITIONS);
+        }
+
+        if (Gdx.input.isKeyJustPressed(Input.Keys.F2)) {
+            // Spawnea un bot azul para que lo uses de víctima
+            engine.spawnTestingBot("Victima", com.amongus.core.api.player.SkinColor.AZUL);
+        }
+
         if (engine.getGameResult() != null) {
             renderEndGame();
             return;
@@ -159,33 +170,25 @@ public class GameScreen implements Screen {
 
             batch.getProjectionMatrix().setToOrtho2D(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
 
+            boolean canUseConsole = false;
+            PlayerView me = findLocalPlayer(snapshot);
             batch.begin();
             if (isHost) {
-                PlayerView me = findLocalPlayer(snapshot);
                 if (me != null) {
-                    float dist = Vector2.dst(me.getPosition().x(), me.getPosition().y(), CONSOLE_X, CONSOLE_Y);
+                    float dist = com.badlogic.gdx.math.Vector2.dst(me.getPosition().x(), me.getPosition().y(), CONSOLE_X, CONSOLE_Y);
 
+                    // Si estamos cerca, habilitamos el botón de usar
                     if (dist <= CONSOLE_RADIUS) {
+                        canUseConsole = true;
                         font.setColor(Color.YELLOW);
-                        font.draw(batch, "Presiona [ E ] para cambiar el mapa", Gdx.graphics.getWidth() / 2f - 180, 150);
+                        font.draw(batch, "Presiona [ E ] o USAR para cambiar el mapa", Gdx.graphics.getWidth() / 2f - 180, 150);
                         font.setColor(Color.WHITE);
-
-                        if (Gdx.input.isKeyJustPressed(Input.Keys.E)) {
-                            MapType[] maps = MapType.values();
-                            int nextIdx = (engine.getMapType().ordinal() + 1) % maps.length;
-                            MapType nextMap = maps[nextIdx];
-
-                            engine.setMapType(nextMap);
-                            if (clienteRed != null) {
-                                clienteRed.enviarMensaje("CHANGE_MAP:" + nextMap.name());
-                            }
-                        }
                     }
                 }
 
                 String nombreMapa = engine.getMapType() == MapType.MAPA_1 ? "Aulas Principal" : "Cancha y Estacionamiento";
                 font.draw(batch, "Mapa actual: " + nombreMapa, 20, Gdx.graphics.getHeight() - 20);
-                font.draw(batch, "ERES EL HOST. PRESIONA [ENTER] PARA INICIAR LA PARTIDA", Gdx.graphics.getWidth() / 2f - 250, 50);
+                font.draw(batch, "ERES EL HOST. PRESIONA [ENTER] O [START] PARA INICIAR", Gdx.graphics.getWidth() / 2f - 250, 50);
             } else {
                 String nombreMapa = engine.getMapType() == MapType.MAPA_1 ? "Aulas Principal" : "Cancha y Estacionamiento";
                 font.draw(batch, "Mapa seleccionado por el Host: " + nombreMapa, 20, Gdx.graphics.getHeight() - 20);
@@ -193,11 +196,32 @@ public class GameScreen implements Screen {
             }
             batch.end();
 
+            // 1. Dibujamos el Botón de Configuración
             hudRenderer.drawConfigButton(batch);
 
+            // 2. Dibujamos los botones del HUD (Engañamos al HUD diciéndole que somos CREWMATE para que ponga el botón USAR a la derecha)
+            hudRenderer.draw(batch, false, false, false, canUseConsole, delta, 0f, com.amongus.core.api.player.Role.CREWMATE);
+
+            // Lógica exclusiva del HOST
             if (isHost) {
+                // 3. Dibujamos el botón de Start (ahora aparece arriba del Usar)
                 hudRenderer.drawStartButton(batch);
-                if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER) || hudRenderer.isStartClicked()) {
+
+                // --- ACCIÓN: Cambiar Mapa ---
+                // Detecta tanto la tecla E como el click en el botón en pantalla
+                if (canUseConsole && (Gdx.input.isKeyJustPressed(Input.Keys.E) || hudRenderer.isUseClicked())) {
+                    MapType[] maps = MapType.values();
+                    int nextIdx = (engine.getMapType().ordinal() + 1) % maps.length;
+                    MapType nextMap = maps[nextIdx];
+
+                    engine.setMapType(nextMap);
+                    if (clienteRed != null) {
+                        clienteRed.enviarMensaje("CHANGE_MAP:" + nextMap.name());
+                    }
+                }
+
+                // --- ACCIÓN: Iniciar Partida ---
+                if (Gdx.input.isKeyJustPressed(com.badlogic.gdx.Input.Keys.ENTER) || hudRenderer.isStartClicked()) {
                     engine.startGameHost(clienteRed);
                 }
             }
@@ -214,9 +238,9 @@ public class GameScreen implements Screen {
 
                 batch.getProjectionMatrix().setToOrtho2D(0, 0, 3840, 2160);
                 batch.begin();
-                votingRenderer.draw(batch, snapshot, inputHandler.getReporterId(),
+                votingRenderer.draw(batch, snapshot, engine.getCurrentReporterId(),
                     meetingTimer, engine.getVotedPlayers(),
-                    true, meetingWasSkipped);
+                    true, meetingWasSkipped, engine.isEmergencyMeeting());
                 batch.end();
 
                 if (meetingTimer >= 5f) {
@@ -265,8 +289,17 @@ public class GameScreen implements Screen {
             batch.getProjectionMatrix().setToOrtho2D(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
 
             if (isAlive) {
-                hudRenderer.draw(batch, inputHandler.isKillReady(), nearbyCorpse != null, inputHandler.canVent(), delta, inputHandler.getKillCooldown());
+                // Le pasamos el 'canUse' desde el InputHandler y el 'myRole' del jugador
+                boolean canUse = inputHandler.canUse(snapshot);
+
+                hudRenderer.draw(batch, inputHandler.isKillReady(), nearbyCorpse != null, inputHandler.canVent(), canUse, delta, inputHandler.getKillCooldown(), me.getRole());
+
                 inputHandler.handleHudClick(hudRenderer, snapshot);
+
+                // Si el jugador hace clic físico en el botón USAR de la pantalla
+                if (hudRenderer.isUseClicked()) {
+                    inputHandler.executeInteraction(snapshot);
+                }
 
                 if (nearbyCorpse != null) {
                     drawReportHUD();
@@ -296,9 +329,9 @@ public class GameScreen implements Screen {
             clear(0.05f, 0.05f, 0.1f, 1);
             batch.getProjectionMatrix().setToOrtho2D(0, 0, 3840, 2160);
             batch.begin();
-            votingRenderer.draw(batch, snapshot, inputHandler.getReporterId(),
+            votingRenderer.draw(batch, snapshot, engine.getCurrentReporterId(),
                 meetingTimer, engine.getVotedPlayers(),
-                false, false);
+                false, false, engine.isEmergencyMeeting());
             batch.end();
 
             if (meetingTimer >= 60f || todosVotaron) {

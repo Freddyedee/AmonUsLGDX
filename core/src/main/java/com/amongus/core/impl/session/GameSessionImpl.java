@@ -3,6 +3,7 @@ package com.amongus.core.impl.session;
 import com.amongus.core.api.Vote.Vote;
 import com.amongus.core.api.events.*;
 import com.amongus.core.api.map.GameMap;
+import com.amongus.core.api.map.MapType;
 import com.amongus.core.api.minigame.MinigameScreen;
 import com.amongus.core.api.player.Player;
 import com.amongus.core.api.player.PlayerId;
@@ -64,7 +65,9 @@ public class GameSessionImpl implements GameSession {
             assignedTaskIdsByPlayer.getOrDefault(pid, new HashSet<>()).remove(tid);
             completedTaskIdsByPlayer.computeIfAbsent(pid, k -> new HashSet<>()).add(tid);
 
-            if (progressTracker != null) {
+            // SOLO AVANZA LA BARRA SI EL JUGADOR ES TRIPULANTE
+            Player player = players.get(pid);
+            if (player != null && player.getRole() == Role.CREWMATE && progressTracker != null) {
                 progressTracker.taskCompleted();
                 System.out.println("[progreso] pendientes: " + progressTracker.getPending()
                     + "/" + progressTracker.getTotal());
@@ -98,23 +101,51 @@ public class GameSessionImpl implements GameSession {
 
         int totalTasks = 0;
 
-        // --- 2. ASIGNAR TAREAS A TODOS LOS JUGADORES ---
+        // Obtenemos el mapa actual
+        MapType currentMap = engine.getMapType();
+
+        // --- 2. ASIGNAR 4 TAREAS ALEATORIAS A TODOS LOS JUGADORES ---
         for (Player p : players.values()) {
-            List<Task> playerTasks = new ArrayList<>();
 
-            // Tareas configuradas por Eliuber
-            playerTasks.add(taskFactory.createBotellonTask(new Position(1200f, 1500f)));
-            playerTasks.add(taskFactory.createWiresTask(new Position(1400f, 1200f)));
-            playerTasks.add(taskFactory.createNumberTask(new Position(1800f, 1600f)));
-            playerTasks.add(taskFactory.createToiletTask(new Position(800f, 1000f)));
-            playerTasks.add(taskFactory.createWhiteBoardTask(new Position(2200f, 900f)));
-            playerTasks.addAll(taskFactory.createTrashTask(new Position(1500f, 500f), new Position(1500f, 200f)));
+            // Generamos la piscina de misiones según el mapa
+            List<List<Task>> taskPool = new ArrayList<>();
 
+            if (currentMap == com.amongus.core.api.map.MapType.MAPA_1) {
+                // --- MAPA 1: Aulas Principal ---
+                taskPool.add(List.of(taskFactory.createToiletTask(new Position(3175f, 1874f))));
+                taskPool.add(List.of(taskFactory.createWhiteBoardTask(new Position(1800f, 1663f))));
+                taskPool.add(List.of(taskFactory.createWiresTask(new Position(763f, 107f))));
+                taskPool.add(List.of(taskFactory.createBotellonTask(new Position(545f, 577f))));
+                taskPool.add(List.of(taskFactory.createNumberTask(new Position(2495f, 589f))));
+                taskPool.add(taskFactory.createTrashTask(new Position(2065f, 609f), new Position(1646f, 331f)));
+                taskPool.add(List.of(taskFactory.createLibraryTask(new Position(2203f, 1740f))));
+            } else {
+                // --- MAPA 2: Cancha y Estacionamiento ---
+                taskPool.add(List.of(taskFactory.createToiletTask(new Position(55f, 1339f))));
+                taskPool.add(List.of(taskFactory.createWhiteBoardTask(new Position(981f, 940f))));
+                taskPool.add(List.of(taskFactory.createWiresTask(new Position(1670f, 2055f))));
+                taskPool.add(List.of(taskFactory.createBotellonTask(new Position(3212f, 548f))));
+                taskPool.add(List.of(taskFactory.createNumberTask(new Position(1560f, 510f))));
+                taskPool.add(taskFactory.createTrashTask(new Position(1740f, 1086f), new Position(1902f, 1537f)));
+                taskPool.add(List.of(taskFactory.createBasketTask(new Position(2797f, 552f))));
+            }
+
+            // Mezclamos la piscina de misiones
+            Collections.shuffle(taskPool);
+
+            // Seleccionamos solo las primeras 4 misiones
+            List<List<Task>> chosenMissions = taskPool.subList(0, 4);
             Set<TaskId> pending = new HashSet<>();
-            for (Task t : playerTasks) {
-                allTasks.put(t.getId(), t);
-                pending.add(t.getId());
-                totalTasks++;
+
+            for (List<Task> mission : chosenMissions) {
+                for (Task t : mission) {
+                    allTasks.put(t.getId(), t);
+                    pending.add(t.getId());
+
+                    if (p.getRole() == Role.CREWMATE) {
+                        totalTasks++;
+                    }
+                }
             }
             assignedTaskIdsByPlayer.put(p.getId(), pending);
         }
@@ -153,6 +184,10 @@ public class GameSessionImpl implements GameSession {
         float dy = targetPos.y() - cy;
 
         if (dx == 0 && dy == 0) return;
+
+        if (Math.hypot(dx, dy) > 150) {
+            return;
+        }
 
         if (gameMap.canMove(player.getPosition(), targetPos)) {
             player.updatePosition(targetPos);
@@ -203,6 +238,16 @@ public class GameSessionImpl implements GameSession {
         stateMachine.transitionTo(GameState.MEETING);
         currentVotes.clear();
         eventBus.publish(new BodyReportedEvent(reporter, victim));
+        eventBus.publish(new VotingStartedEvent());
+    }
+
+    // Metodo exclusivo para emergencias
+    public void callEmergencyMeeting(PlayerId caller){
+        requireState(GameState.IN_GAME);
+        stateMachine.transitionTo(GameState.MEETING);
+        currentVotes.clear();
+        // Publicamos el evento con 'null' en la víctima para indicar que es emergencia
+        eventBus.publish(new BodyReportedEvent(caller, null));
         eventBus.publish(new VotingStartedEvent());
     }
 

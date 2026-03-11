@@ -29,6 +29,7 @@ public class NetworkActionSender implements ActionSender {
             case VOTE   -> engine.castVote(new VoteImpl(action.getPlayerId(), ((VoteAction) action).getTargetId()));
             case VENT -> engine.processVentAction(action.getPlayerId(), ((VentAction)action).getTargetVent(), ((VentAction)action).isExiting());
             case CHANGE_COLOR -> engine.changePlayerColor(action.getPlayerId(), ((ChangeColorAction) action).getNewColor());
+            case TASK -> engine.notifyTaskCompletedByNetwork(action.getPlayerId(), ((TaskAction) action).getTaskId());
         }
 
         // 2. Envío por Red
@@ -68,6 +69,10 @@ public class NetworkActionSender implements ActionSender {
                 case CHANGE_COLOR -> {
                     ChangeColorAction ca = (ChangeColorAction) action;
                     client.enviarMensaje("COLOR:" + ca.getPlayerId().value() + ":" + ca.getNewColor().name());
+                }
+                case TASK -> {
+                    TaskAction ta = (TaskAction) action;
+                    client.enviarMensaje("TASK:" + ta.getPlayerId().value() + ":" + ta.getTaskId().value());
                 }
             }
         }
