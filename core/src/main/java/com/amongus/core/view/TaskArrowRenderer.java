@@ -132,6 +132,19 @@ public class TaskArrowRenderer implements Disposable {
         }
     }
 
+    public void drawSingleArrow(SpriteBatch batch, float x, float y,
+                                float angleDeg, float size) {
+        batch.draw(arrowTexture,
+            x - size / 2f, y - size / 2f,
+            size / 2f, size / 2f,       // origin para rotación
+            size, size,
+            1f, 1f,
+            angleDeg,
+            0, 0,
+            arrowTexture.getWidth(), arrowTexture.getHeight(),
+            false, false);
+    }
+
     @Override
     public void dispose() {
         arrowTexture.dispose();

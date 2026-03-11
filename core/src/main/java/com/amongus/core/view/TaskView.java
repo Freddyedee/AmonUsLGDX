@@ -2,6 +2,7 @@ package com.amongus.core.view;
 
 import com.amongus.core.api.task.Task;
 import com.amongus.core.api.task.TaskId;
+import com.amongus.core.api.task.TaskType;
 import com.amongus.core.model.Position;
 
 public final class TaskView {
@@ -11,6 +12,7 @@ public final class TaskView {
     private final boolean completed;
     private final String mapSpritePath;
     private final float mapSpriteScale;
+    private final TaskType taskType;
 
     public TaskView(Task task, boolean completed) {
         this.id = task.getId();
@@ -18,6 +20,7 @@ public final class TaskView {
         this.completed = completed;
         this.mapSpritePath = task.getMapSpritePath();
         this.mapSpriteScale = task.getMapSpriteScale();
+        this.taskType = task.getTaskType();
     }
 
     public TaskId getId() {
@@ -33,4 +36,7 @@ public final class TaskView {
     public String getMapSpritePath() { return mapSpritePath; }
 
     public float getMapSpriteScale() { return mapSpriteScale; }
+
+    // GETTER PARA LA FLECHA ROJA
+    public TaskType getTaskType() { return taskType; }
 }

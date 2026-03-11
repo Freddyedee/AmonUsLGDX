@@ -21,6 +21,7 @@ import com.amongus.core.impl.map.MaskCollisionMap;
 import com.amongus.core.impl.network.GameClient;
 import com.amongus.core.impl.player.ColorAssigner;
 import com.amongus.core.impl.rules.GameRules;
+import com.amongus.core.impl.sabotage.SabotageManager;
 import com.amongus.core.impl.session.GameSessionImpl;
 import com.amongus.core.model.Position;
 import com.amongus.core.view.GameSnapshot;
@@ -28,6 +29,7 @@ import com.amongus.core.view.PlayerView;
 import com.amongus.core.impl.player.PlayerImpl;
 import com.amongus.core.impl.voting.VotingSystemImpl;
 import com.amongus.core.view.TaskView;
+import com.amongus.debug.DebugConfig;
 
 import java.util.List;
 import java.util.Optional;
@@ -47,16 +49,18 @@ public class GameEngine {
     // --- VARIABLES DE REUNIÓN ---
     private PlayerId currentReporterId = null;
     private PlayerId currentVictimId = null;
+    // --- Sabotaje ---
+    private final SabotageManager sabotageManager = new SabotageManager();
 
     public PlayerId getCurrentReporterId() { return currentReporterId; }
     public boolean isEmergencyMeeting() {
         return currentVictimId != null && currentVictimId.value().equals(java.util.UUID.fromString("00000000-0000-0000-0000-000000000000"));
     }
 
-    // Pantalla de minijuego (Nuevo de Eliuber)
+    // Pantalla de minijuego
     private MinigameScreen activeMinigame = null;
 
-    // Flag de debug (Nuevo de Eliuber)
+    // Flag de debug
     private static final boolean DEBUG_ROLES = true;
 
     public GameEngine(MapType mapType){
@@ -348,6 +352,9 @@ public class GameEngine {
             forceMovePlayer(p.getId(), lobbySpawn);
             // Les apagamos cualquier estado de caminar fantasma
             setPlayerMoving(p.getId(), false, 1);
+            if (sabotageManager != null) {
+                sabotageManager.reset();
+            }
         }
 
         if (this.gameMap instanceof MaskCollisionMap) {
@@ -403,7 +410,7 @@ public class GameEngine {
 
     // --- Metodo para verificar condiciones de victoria ---
     public void checkWinConditions() {
-        if (com.amongus.debug.DebugConfig.IGNORE_WIN_CONDITIONS) return;
+        if (DebugConfig.IGNORE_WIN_CONDITIONS) return;
         if (gameResult != null) return; // Si ya terminó, no hacemos nada
 
         // 1. Usamos tu clase GameRules para verificar muertes/votos
@@ -427,6 +434,17 @@ public class GameEngine {
         if (tracker != null && tracker.getTotal() > 0 && tracker.getPending() == 0) {
             gameResult = "CREWMATE";
             System.out.println("[FIN] ¡Los tripulantes ganan por completar todas las tareas!");
+        }
+    }
+
+    // 2. Añade estos métodos en cualquier parte de tu GameEngine
+    public SabotageManager getSabotageManager() {
+        return sabotageManager;
+    }
+
+    public void activateSabotageTask(SabotageManager.SabotageType type) {
+        if (session instanceof GameSessionImpl) {
+            session.activateSabotageTask(type);
         }
     }
 

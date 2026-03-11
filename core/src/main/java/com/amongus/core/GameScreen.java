@@ -4,12 +4,15 @@ import com.amongus.core.api.actions.ActionSender;
 import com.amongus.core.api.map.MapType;
 import com.amongus.core.api.minigame.MinigameScreen;
 import com.amongus.core.api.player.PlayerId;
+import com.amongus.core.api.player.Role;
 import com.amongus.core.api.player.SkinColor;
 import com.amongus.core.api.state.GameState;
 import com.amongus.core.impl.actions.NetworkActionSender;
+import com.amongus.core.impl.actions.SabotageAction;
 import com.amongus.core.impl.engine.GameEngine;
 import com.amongus.core.impl.network.GameClient;
 import com.amongus.core.impl.player.InputHandler;
+import com.amongus.core.impl.sabotage.SabotageManager;
 import com.amongus.core.view.*;
 import com.amongus.core.view.screens.MainMenuScreen;
 import com.amongus.debug.DebugConfig;
@@ -22,8 +25,11 @@ import com.badlogic.gdx.graphics.*;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
+import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Matrix4;
+import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.math.Vector3;
 
 import static com.badlogic.gdx.utils.ScreenUtils.clear;
 
@@ -73,6 +79,20 @@ public class GameScreen implements Screen {
     private final java.util.Map<String, Texture> taskSprites = new java.util.HashMap<>();
     private TaskArrowRenderer taskArrowRenderer;
 
+    // --- VARIABLES DE SABOTAJE ---
+    private SabotageMapOverlay sabotageMapOverlay;
+    private Texture sabotageButtonTexture;
+    private Rectangle sabotageButtonRect;
+    private static final float SAB_BTN_SIZE = 80f;
+    private boolean internetSabotaged = false;
+
+    // --- VARIABLES DE LUCES ---
+    private Texture visionMask;
+    private boolean lightsSabotaged = false;
+    private static final float DEFAULT_VISION_RADIUS = 280f;
+    private static final float SABOTAGED_VISION_RADIUS = 100f; // Súper reducido
+    private float darknessAlpha = 0f;
+
     public GameScreen(GameEngine engine, GameClient clienteRed, boolean isHost) {
         this.engine = engine;
         this.myPlayerId = engine.getLocalPlayerId();
@@ -92,6 +112,7 @@ public class GameScreen implements Screen {
         votingRenderer = new VotingRenderer();
         imgBtnPlayAgain = new Texture(Gdx.files.internal("hud/JugarOtraVez.png"));
         imgBtnQuit = new Texture(Gdx.files.internal("hud/Salir.png"));
+        visionMask = new Texture(Gdx.files.internal("sprites/vision_mask.png"));
 
         // Inicializar Tareas
         shapeRenderer = new ShapeRenderer();
@@ -112,14 +133,52 @@ public class GameScreen implements Screen {
 
         ActionSender sender = new NetworkActionSender(engine, clienteRed);
         inputHandler = new InputHandler(sender, engine, myPlayerId);
+
+        // --- INICIALIZAR SABOTAJE ---
+        sabotageMapOverlay = new SabotageMapOverlay();
+        sabotageMapOverlay.setMap(engine.getMapType());
+
+        // Carga de texturas de botones (asegúrate de tener estos archivos en assets)
+        sabotageMapOverlay.setInternetButtonTexture("minijuegos/sabotageInternet/internetObj-removebg-preview.png");
+        sabotageMapOverlay.setLightsButtonTexture("minijuegos/fixLights/fixLightsObjt-removebg-preview.png");
+
+        sabotageMapOverlay.setSelectListener((type, btnIndex) -> {
+            // Cuando el impostor hace click en el mapa de sabotaje
+            sender.send(new SabotageAction(myPlayerId, type));
+        });
+
+        sabotageButtonTexture = new Texture(Gdx.files.internal("hud/Sabotaje.png"));
+        // Posición del botón en la esquina justo por encima del botón de kill
+        float sabX = Gdx.graphics.getWidth() - 220f;
+        float sabY = 200f;
+        sabotageButtonRect = new Rectangle(sabX, sabY, SAB_BTN_SIZE, SAB_BTN_SIZE);
+
+        engine.getSabotageManager().setListener(new SabotageManager.SabotageListener() {
+            @Override
+            public void onSabotageActivated(SabotageManager.SabotageType type) {
+                if (type == SabotageManager.SabotageType.INTERNET) internetSabotaged = true;
+                if (type == SabotageManager.SabotageType.LIGHTS) lightsSabotaged = true;
+            }
+
+            @Override
+            public void onSabotageResolved(SabotageManager.SabotageType type) {
+                if (type == SabotageManager.SabotageType.INTERNET) internetSabotaged = false;
+                if (type == SabotageManager.SabotageType.LIGHTS) lightsSabotaged = false;
+            }
+        });
     }
 
     @Override
     public void render(float delta) {
         GameSnapshot snapshot = engine.getSnapshot();
+        // Luces
+        if (lightsSabotaged) {
+            darknessAlpha = Math.min(1f, darknessAlpha + delta * 2f); // Oscurece en 0.5s
+        } else {
+            darknessAlpha = Math.max(0f, darknessAlpha - delta * 4f); // Aclara más rápido
+        }
 
-        // ── ATAJOS DE DEBUG (Solo para desarrollo) ──
-
+        //* ── ATAJOS DE DEBUG (Solo para desarrollo) ──
         if (Gdx.input.isKeyJustPressed(Input.Keys.F1)) {
             DebugConfig.IGNORE_WIN_CONDITIONS = !DebugConfig.IGNORE_WIN_CONDITIONS;
             System.out.println("[DEBUG] Ignorar Victorias: " + DebugConfig.IGNORE_WIN_CONDITIONS);
@@ -129,7 +188,7 @@ public class GameScreen implements Screen {
             // Spawnea un bot azul para que lo uses de víctima
             engine.spawnTestingBot("Victima", SkinColor.AZUL);
         }
-
+        //*/
         if (engine.getGameResult() != null) {
             renderEndGame();
             return;
@@ -139,6 +198,9 @@ public class GameScreen implements Screen {
             if (mapa != null) mapa.dispose();
             currentLoadedMap = engine.getMapType();
             mapa = new Texture(currentLoadedMap.getVisualPath());
+            if (sabotageMapOverlay != null) {
+                sabotageMapOverlay.setMap(currentLoadedMap);
+            }
             return;
         }
 
@@ -255,6 +317,7 @@ public class GameScreen implements Screen {
             }
 
             inputHandler.handleGameInput(snapshot, delta);
+            engine.getSabotageManager().update(delta);
             snapshot = engine.getSnapshot();
 
             PlayerView me = findLocalPlayer(snapshot);
@@ -277,7 +340,20 @@ public class GameScreen implements Screen {
             // Dibujamos el mundo
             renderGameplay(snapshot);
 
-            // --- BARRAS DE PROGRESO Y FLECHAS (De Eliuber) ---
+            // Tinte Rojo si hay sabotaje de Internet
+            if (internetSabotaged) {
+                Gdx.gl.glEnable(GL20.GL_BLEND);
+                Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+                batch.getProjectionMatrix().setToOrtho2D(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+                batch.begin();
+                batch.setColor(1f, 0f, 0f, 0.3f); // Tinte rojo semitransparente
+                batch.draw(pixelBlanco, 0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+                batch.setColor(Color.WHITE);
+                batch.end();
+                Gdx.gl.glDisable(GL20.GL_BLEND);
+            }
+
+            // --- BARRAS DE PROGRESO Y FLECHAS ---
             renderProgressBar(snapshot);
 
             Matrix4 screenMatrix = new Matrix4()
@@ -285,7 +361,17 @@ public class GameScreen implements Screen {
 
             batch.setProjectionMatrix(screenMatrix);
             batch.begin();
-            taskArrowRenderer.draw(batch, snapshot, myPlayerId, Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), camera);
+
+            boolean isSabotageActive = internetSabotaged || lightsSabotaged;
+
+            if (!isSabotageActive) {
+                // Si no hay sabotaje, dibujamos las flechas amarillas de las tareas
+                taskArrowRenderer.draw(batch, snapshot, myPlayerId, Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), camera);
+            } else {
+                // Si hay sabotaje, OCULTAMOS las amarillas y dibujamos SOLO la roja apuntando a la emergencia
+                renderSabotageArrow(snapshot);
+            }
+
             batch.end();
             batch.setProjectionMatrix(camera.combined); // Restaurar cámara
 
@@ -305,8 +391,17 @@ public class GameScreen implements Screen {
                     inputHandler.executeInteraction(snapshot);
                 }
 
-                if (nearbyCorpse != null) {
-                    drawReportHUD();
+                if (nearbyCorpse != null) { drawReportHUD(); }
+                // NUEVO: HUD del Impostor (Botón de Sabotaje)
+                if (me.getRole() == Role.IMPOSTOR) {
+                    renderSabotageHUD();
+                    handleSabotageInput();
+
+                    if (sabotageMapOverlay.isVisible()) {
+                        batch.setProjectionMatrix(screenMatrix);
+                        sabotageMapOverlay.render(batch, shapeRenderer, engine.getSabotageManager());
+                        batch.setProjectionMatrix(camera.combined);
+                    }
                 }
             } else {
                 batch.begin();
@@ -364,6 +459,7 @@ public class GameScreen implements Screen {
             camera.update();
         }
 
+        // ── 1. DIBUJAR FONDO Y OTROS JUGADORES (LO QUE SE OSCURECE) ──
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
 
@@ -374,37 +470,89 @@ public class GameScreen implements Screen {
         }
 
         for (PlayerView pv : snapshot.getPlayers()) {
-            if (pv.isAlive()) {
-                if (pv.isVenting()) continue;
-                boolean isMe = pv.getId().equals(myPlayerId);
-                int dir = isMe ? inputHandler.getDireccion() : pv.getDirection();
-                boolean moving = pv.isMoving();
-                playerRenderer.draw(batch, pv.getPosition().x(), pv.getPosition().y(), pv.getId(), dir, moving, true, pv.getSkinColor());
-            } else {
-                boolean isMe = pv.getId().equals(myPlayerId);
-                int dir = isMe ? inputHandler.getDireccion() : pv.getDirection();
-                boolean moving = pv.isMoving();
-                playerRenderer.draw(batch, pv.getPosition().x(), pv.getPosition().y(), pv.getId(), dir, moving, false, pv.getSkinColor());
-            }
+            if (pv.getId().equals(myPlayerId)) continue;
+            if (pv.isVenting()) continue;
+
+            int dir = pv.getDirection();
+            boolean moving = pv.isMoving();
+            playerRenderer.draw(batch, pv.getPosition().x(), pv.getPosition().y(), pv.getId(), dir, moving, pv.isAlive(), pv.getSkinColor());
         }
-        if (showDebug) {
-            debugRenderer.drawHitboxes(snapshot);
-        }
+
+        if (showDebug) debugRenderer.drawHitboxes(snapshot);
         batch.end();
 
-        // DIBUJAR TAREAS EN EL SUELO
+        // DIBUJAR TAREAS EN EL SUELO (También se oscurecen)
         renderTasks(snapshot);
 
-        // DIBUJAR LOS NOMBRES
+        // ── 2. APLICAR EL EFECTO DE VISIÓN SUAVE (MÁSCARA DE OSCURIDAD) ──
+        if (snapshot.getState() == GameState.IN_GAME && darknessAlpha > 0 && targetView != null) {
+            Gdx.gl.glEnable(GL20.GL_BLEND);
+            batch.setBlendFunction(GL20.GL_DST_COLOR, GL20.GL_ZERO);
+
+            batch.getProjectionMatrix().setToOrtho2D(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+            batch.begin();
+
+            batch.setColor(1f, 1f, 1f, darknessAlpha);
+
+            float radius = lightsSabotaged ? SABOTAGED_VISION_RADIUS : DEFAULT_VISION_RADIUS;
+            // Hacemos el degradado amplio (puedes jugar con este 2.8f si quieres más o menos difuminado)
+            float size = radius * 2.8f;
+            float halfSize = size / 2f;
+
+            com.badlogic.gdx.math.Vector3 screenPos = new com.badlogic.gdx.math.Vector3(targetView.getPosition().x(), targetView.getPosition().y(), 0);
+            camera.project(screenPos);
+
+            float cx = screenPos.x;
+            float cy = screenPos.y;
+            float sw = Gdx.graphics.getWidth();
+            float sh = Gdx.graphics.getHeight();
+
+            // Calculamos los bordes exactos donde termina la textura
+            float leftEdge = cx - halfSize;
+            float rightEdge = cx + halfSize;
+            float bottomEdge = cy - halfSize;
+            float topEdge = cy + halfSize;
+
+            // 1. Dibujamos el círculo de visión exactamente en sus bordes
+            batch.draw(visionMask, leftEdge, bottomEdge, size, size);
+
+            // 2. Rellenamos el resto con negro puro transparente, respetando los bordes exactos
+            batch.setColor(0, 0, 0, darknessAlpha);
+            // Rectángulo Arriba
+            batch.draw(pixelBlanco, 0, topEdge, sw, sh - topEdge);
+            // Rectángulo Abajo
+            batch.draw(pixelBlanco, 0, 0, sw, bottomEdge);
+            // Rectángulo Izquierda
+            batch.draw(pixelBlanco, 0, bottomEdge, leftEdge, size);
+            // Rectángulo Derecha
+            batch.draw(pixelBlanco, rightEdge, bottomEdge, sw - rightEdge, size);
+
+            batch.setColor(Color.WHITE); // Restauramos
+            batch.end();
+
+            batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+            Gdx.gl.glDisable(GL20.GL_BLEND);
+        }
+
+        // ── 3. DIBUJAR AL JUGADOR LOCAL Y NOMBRES (POR ENCIMA DE LA OSCURIDAD) ──
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
+
+        if (targetView != null && !targetView.isVenting()) {
+            playerRenderer.draw(batch, targetView.getPosition().x(), targetView.getPosition().y(), targetView.getId(), inputHandler.getDireccion(), targetView.isMoving(), targetView.isAlive(), targetView.getSkinColor());
+        }
+
         for (PlayerView pv : snapshot.getPlayers()) {
             if (pv.isVenting()) continue;
 
-            String nombre = pv.getId().equals(myPlayerId) ? "Tú" : pv.getName();
-            float yOffset = pv.isAlive() ? 85 : 30;
+            float dist = Vector2.dst(targetView.getPosition().x(), targetView.getPosition().y(), pv.getPosition().x(), pv.getPosition().y());
+            float currentVisRadius = lightsSabotaged ? SABOTAGED_VISION_RADIUS + 50f : DEFAULT_VISION_RADIUS + 100f;
 
-            font.draw(batch, nombre, pv.getPosition().x() - 50, pv.getPosition().y() + yOffset, 100, com.badlogic.gdx.utils.Align.center, false);
+            if (dist < currentVisRadius) {
+                String nombre = pv.getId().equals(myPlayerId) ? "Tú" : pv.getName();
+                float yOffset = pv.isAlive() ? 85 : 30;
+                font.draw(batch, nombre, pv.getPosition().x() - 50, pv.getPosition().y() + yOffset, 100, com.badlogic.gdx.utils.Align.center, false);
+            }
         }
         batch.end();
     }
@@ -716,6 +864,61 @@ public class GameScreen implements Screen {
         }
     }
 
+    // ── Helpers de Sabotaje ──
+    private void renderSabotageHUD() {
+        com.amongus.core.impl.sabotage.SabotageManager sm = engine.getSabotageManager();
+        boolean canSab = sm.canSabotage();
+
+        batch.getProjectionMatrix().setToOrtho2D(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+        batch.begin();
+        batch.setColor(canSab ? 1f : 0.5f, canSab ? 1f : 0.5f, canSab ? 1f : 0.5f, 1f);
+        batch.draw(sabotageButtonTexture, sabotageButtonRect.x, sabotageButtonRect.y, sabotageButtonRect.width, sabotageButtonRect.height);
+        batch.setColor(1f, 1f, 1f, 1f);
+
+        if (!canSab && sm.getCooldownRemaining() > 0f) {
+            font.setColor(Color.RED);
+            font.draw(batch, String.format("%.0f", sm.getCooldownRemaining()), sabotageButtonRect.x + sabotageButtonRect.width / 2f - 8f, sabotageButtonRect.y + sabotageButtonRect.height + 18f);
+            font.setColor(Color.WHITE);
+        }
+        batch.end();
+    }
+
+    private void handleSabotageInput() {
+        if (Gdx.input.isButtonJustPressed(Input.Buttons.LEFT)) {
+            float mx = Gdx.input.getX();
+            float my = Gdx.graphics.getHeight() - Gdx.input.getY();
+            if (sabotageButtonRect.contains(mx, my)) {
+                sabotageMapOverlay.toggle();
+            }
+        }
+        sabotageMapOverlay.handleInput(engine.getSabotageManager());
+    }
+
+    private void renderSabotageArrow(GameSnapshot snapshot) {
+        snapshot.getTasks().stream()
+            .filter(tv -> tv.getTaskType() == com.amongus.core.api.task.TaskType.SABOTAGE && !tv.isCompleted())
+            .findFirst()
+            .ifPresent(sabTask -> {
+                Vector3 worldPos = new Vector3(sabTask.getPosition().x(), sabTask.getPosition().y(), 0);
+                camera.project(worldPos);
+
+                float sw = Gdx.graphics.getWidth();
+                float sh = Gdx.graphics.getHeight();
+                boolean onScreen = worldPos.x >= 0 && worldPos.x <= sw && worldPos.y >= 0 && worldPos.y <= sh;
+
+                if (!onScreen) {
+                    float margin = 40f;
+                    float clampedX = MathUtils.clamp(worldPos.x, margin, sw - margin);
+                    float clampedY = MathUtils.clamp(worldPos.y, margin, sh - margin);
+                    float angle = (float) Math.toDegrees(Math.atan2(worldPos.y - sh / 2f, worldPos.x - sw / 2f));
+
+                    batch.setColor(1f, 0.15f, 0.15f, 1f); // Flecha Roja
+                    taskArrowRenderer.drawSingleArrow(batch, clampedX, clampedY, angle, 45f);
+                    batch.setColor(1f, 1f, 1f, 1f);
+                }
+            });
+    }
+
     private PlayerView findLocalPlayer(GameSnapshot snapshot) {
         return snapshot.getPlayers().stream().filter(p -> p.getId().equals(myPlayerId)).findFirst().orElse(null);
     }
@@ -740,5 +943,7 @@ public class GameScreen implements Screen {
         shapeRenderer.dispose();
         taskArrowRenderer.dispose();
         taskSprites.values().forEach(Texture::dispose);
+        if (sabotageButtonTexture != null) sabotageButtonTexture.dispose();
+        if (sabotageMapOverlay != null) sabotageMapOverlay.dispose();
     }
 }

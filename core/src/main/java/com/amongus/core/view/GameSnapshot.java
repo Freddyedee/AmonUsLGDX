@@ -35,6 +35,13 @@ public final class GameSnapshot {
         return localPlayerId;
     }
 
+    public PlayerView getLocalPlayer() {
+        return players.stream()
+            .filter(p -> p.getId().equals(localPlayerId))
+            .findFirst()
+            .orElse(null);
+    }
+
     public List<TaskView> getTasks() {
         return tasks;
     }

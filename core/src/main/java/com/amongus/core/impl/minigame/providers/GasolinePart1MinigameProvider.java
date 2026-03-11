@@ -7,6 +7,7 @@ import com.amongus.core.api.task.Task;
 import com.amongus.core.impl.engine.GameEngine;
 import com.amongus.core.impl.minigame.GasolinePart1MinigameScreen;
 import com.amongus.core.impl.task.unique.GasolineTaskGroup;
+import com.amongus.core.impl.task.unique.GasolineTaskPart1;
 
 public class GasolinePart1MinigameProvider implements MinigameProvider {
 

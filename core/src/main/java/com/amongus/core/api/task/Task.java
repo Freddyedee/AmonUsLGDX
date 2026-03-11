@@ -26,4 +26,8 @@ public interface Task {
     default String getMapSpritePath() { return null; }
 
     default float getMapSpriteScale() { return 1.0f; }
+
+    default boolean countsForProgress() {
+        return getTaskType() != TaskType.SABOTAGE;
+    }
 }

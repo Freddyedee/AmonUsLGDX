@@ -1,11 +1,12 @@
 package com.amongus.core.api.session;
 
-import com.amongus.core.api.Vote.Vote;
 import com.amongus.core.api.player.Player;
 import com.amongus.core.api.player.PlayerId;
 import com.amongus.core.api.state.GameState;
+import com.amongus.core.api.Vote.Vote;
 import com.amongus.core.api.task.Task;
 import com.amongus.core.api.task.TaskId;
+import com.amongus.core.impl.sabotage.SabotageManager;
 
 import java.util.Collection;
 import java.util.List;
@@ -115,6 +116,10 @@ public interface GameSession {
      *  - devuelve el estado a PLAYING
      */
     void resolveVoting();
+    // --------------------------------------------------
+    // TAREAS
+    // --------------------------------------------------
+
 
     // --------------------------------------------------
     // CONSULTAS
@@ -147,4 +152,14 @@ public interface GameSession {
     boolean isTaskCompleted(PlayerId localPlayerId, TaskId id);
 
     List<Task> getAllTasksForPlayer(PlayerId localPlayerId);
+
+    void activateSabotageTask(SabotageManager.SabotageType type);
+
+    Player getPlayer(PlayerId localPlayerId);
+
+    List<Task> getAllTasks();
+
+    boolean isImpostor(PlayerId localPlayerId);
 }
+
+

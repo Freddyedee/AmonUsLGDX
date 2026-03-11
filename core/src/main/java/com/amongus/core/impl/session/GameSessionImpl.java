@@ -15,8 +15,11 @@ import com.amongus.core.api.task.Task;
 import com.amongus.core.api.task.TaskId;
 import com.amongus.core.impl.engine.GameEngine;
 import com.amongus.core.impl.player.PlayerImpl;
+import com.amongus.core.impl.sabotage.SabotageManager;
 import com.amongus.core.impl.state.GameStateMachine;
 import com.amongus.core.impl.task.TaskFactory;
+import com.amongus.core.impl.task.sabotageTask.FixLightsSabotageTask;
+import com.amongus.core.impl.task.sabotageTask.InternetSabotageTask;
 import com.amongus.core.model.Position;
 
 import java.util.*;
@@ -33,13 +36,17 @@ public class GameSessionImpl implements GameSession {
     private final Map<PlayerId, Vote> currentVotes;
 
     // --------------------------------------------------
-    // ATRIBUTOS RELACIONADOS CON TASK (De Eliuber)
+    // ATRIBUTOS RELACIONADOS CON TASK
     // -------------------------------------------------
     private final Map<TaskId, Task> allTasks;
     private final Map<PlayerId, Set<TaskId>> assignedTaskIdsByPlayer;   // solo las que aún debe hacer
     private final Map<PlayerId, Set<TaskId>> completedTaskIdsByPlayer;  // las que ya terminó
     private final TaskFactory taskFactory;
     private TaskProgressTracker progressTracker;
+
+    // ── VARIABLES DE SABOTAJE ──
+    private InternetSabotageTask internetSabotageTask;
+    private FixLightsSabotageTask fixLightsSabotageTask;
 
     public GameSessionImpl(UUID sessionId, EventBus eventBus, GameMap gameMap, GameEngine engine){
         this.engine = engine;
@@ -64,6 +71,13 @@ public class GameSessionImpl implements GameSession {
 
             assignedTaskIdsByPlayer.getOrDefault(pid, new HashSet<>()).remove(tid);
             completedTaskIdsByPlayer.computeIfAbsent(pid, k -> new HashSet<>()).add(tid);
+
+            Task task = allTasks.get(tid);
+
+            if (task != null && task.getTaskType() == com.amongus.core.api.task.TaskType.SABOTAGE) {
+                engine.getSabotageManager().resolveSabotage();
+                return; // Cortamos aquí para que no sume a la barra verde
+            }
 
             // SOLO AVANZA LA BARRA SI EL JUGADOR ES TRIPULANTE
             Player player = players.get(pid);
@@ -104,13 +118,37 @@ public class GameSessionImpl implements GameSession {
         // Obtenemos el mapa actual
         MapType currentMap = engine.getMapType();
 
+        // ── 1. INICIALIZAR SABOTAJES SEGÚN EL MAPA ──
+        if (currentMap == MapType.MAPA_1) {
+            // Mapa 1: Internet cerca de Librería, Luces cerca del cuarto eléctrico (Cables)
+            internetSabotageTask = new InternetSabotageTask(
+                new TaskId(java.util.UUID.randomUUID()), new Position(2203f, 1740f),
+                new com.amongus.core.impl.minigame.providers.InternetSabotageMinigameProvider(engine, engine.getSabotageManager()));
+
+            fixLightsSabotageTask = new FixLightsSabotageTask(
+                new TaskId(java.util.UUID.randomUUID()), new Position(763f, 107f),
+                new com.amongus.core.impl.minigame.providers.FixLightsMinigameProvider(engine, engine.getSabotageManager()));
+        } else {
+            // Mapa 2: Internet cerca de Etapa en Proyecto, Luces cerca de Cables
+            internetSabotageTask = new InternetSabotageTask(
+                new TaskId(java.util.UUID.randomUUID()), new Position(1560f, 510f),
+                new com.amongus.core.impl.minigame.providers.InternetSabotageMinigameProvider(engine, engine.getSabotageManager()));
+
+            fixLightsSabotageTask = new FixLightsSabotageTask(
+                new TaskId(java.util.UUID.randomUUID()), new Position(179f, 1420f),
+                new com.amongus.core.impl.minigame.providers.FixLightsMinigameProvider(engine, engine.getSabotageManager()));
+        }
+
+        allTasks.put(internetSabotageTask.getId(), internetSabotageTask);
+        allTasks.put(fixLightsSabotageTask.getId(), fixLightsSabotageTask);
+
         // --- 2. ASIGNAR 4 TAREAS ALEATORIAS A TODOS LOS JUGADORES ---
         for (Player p : players.values()) {
 
             // Generamos la piscina de misiones según el mapa
             List<List<Task>> taskPool = new ArrayList<>();
 
-            if (currentMap == com.amongus.core.api.map.MapType.MAPA_1) {
+            if (currentMap == MapType.MAPA_1) {
                 // --- MAPA 1: Aulas Principal ---
                 taskPool.add(List.of(taskFactory.createToiletTask(new Position(3175f, 1874f))));
                 taskPool.add(List.of(taskFactory.createWhiteBoardTask(new Position(1800f, 1663f))));
@@ -314,6 +352,42 @@ public class GameSessionImpl implements GameSession {
         MinigameScreen screen = task.getMinigameProvider().createScreen(playerId, task);
         engine.setActiveMinigame(screen);
         eventBus.publish(new TaskInteractionStartedEvent(playerId, task.getId()));
+    }
+
+    // --------------------------------------------------
+    // MÉTODOS PARA EL IMPOSTOR Y SABOTAJES
+    // --------------------------------------------------
+
+    @Override
+    public Player getPlayer(PlayerId playerId) {
+        return players.get(playerId);
+    }
+
+    @Override
+    public List<Task> getAllTasks() {
+        return new java.util.ArrayList<>(allTasks.values());
+    }
+
+    @Override
+    public boolean isImpostor(PlayerId playerId) {
+        Player p = players.get(playerId);
+        return p != null && p.getRole().isImpostor();
+    }
+
+    public void activateSabotageTask(SabotageManager.SabotageType type) {
+        if (type == SabotageManager.SabotageType.INTERNET && internetSabotageTask != null) {
+            TaskId id = internetSabotageTask.getId();
+            completedTaskIdsByPlayer.values().forEach(set -> set.remove(id));
+            players.values().forEach(p ->
+                assignedTaskIdsByPlayer.computeIfAbsent(p.getId(), k -> new java.util.HashSet<>()).add(id));
+        }
+
+        if (type == SabotageManager.SabotageType.LIGHTS && fixLightsSabotageTask != null) {
+            TaskId id = fixLightsSabotageTask.getId();
+            completedTaskIdsByPlayer.values().forEach(set -> set.remove(id));
+            players.values().forEach(p ->
+                assignedTaskIdsByPlayer.computeIfAbsent(p.getId(), k -> new java.util.HashSet<>()).add(id));
+        }
     }
 
     public boolean isTaskCompleted(PlayerId playerId, TaskId taskId) {
