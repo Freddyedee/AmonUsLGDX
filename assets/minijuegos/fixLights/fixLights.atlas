@@ -1,0 +1,13 @@
+fixLights.png
+size:1024,2048
+repeat:none
+boardbg
+bounds:2,524,480,520
+lightOn
+bounds:484,524,480,520
+lightSocket_off
+bounds:2,2,480,520
+stickDown
+bounds:2,1046,480,520
+stickUp
+bounds:484,1046,480,520

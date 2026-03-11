@@ -1,0 +1,17 @@
+sabotageInternet.png
+size:1024,1024
+repeat:none
+panel_wifi-lever
+bounds:2,2,63,45
+panel_wifi_bg
+bounds:2,49,366,716
+panel_wifi_closingthing
+bounds:866,178,71,587
+panel_wifi_lid
+bounds:370,272,360,493
+panel_wifi_lidside
+bounds:732,174,132,591
+panel_wifi_nodeOff
+bounds:939,746,17,19
+panel_wifi_nodeOn
+bounds:370,251,17,19
