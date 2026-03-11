@@ -204,8 +204,14 @@ public class GameScreen implements Screen {
             return;
         }
 
-        if (hudRenderer.isConfigurationClicked() || Gdx.input.isKeyJustPressed(keyEscape)) {
-            isMenuOpen = !isMenuOpen;
+        // Solo permitimos abrir el menú si estamos en el LOBBY
+        if (snapshot.getState() == GameState.LOBBY) {
+            if (hudRenderer.isConfigurationClicked() || Gdx.input.isKeyJustPressed(keyEscape)) {
+                isMenuOpen = !isMenuOpen;
+            }
+        } else {
+            // Si no estamos en el lobby, forzamos a que el menú esté cerrado
+            isMenuOpen = false;
         }
 
         if (isMenuOpen) {
