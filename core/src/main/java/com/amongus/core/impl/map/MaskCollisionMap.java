@@ -45,6 +45,20 @@ public class MaskCollisionMap implements GameMap {
         return new Position(paintX, WORLD_HEIGHT - paintY);
     }
 
+    // ── Metodo limpio para comprobar la colisión de 15 puntos ──
+    private boolean isHitboxClear(float cX, float cY) {
+        int x = (int) cX;
+        int y = (int) cY;
+
+        // Creamos una red de 15 sensores (5 columnas de izquierda a derecha, 3 filas de pies a cabeza)
+        for (int offsetX = -12; offsetX <= 12; offsetX += 6) {
+            if (!isWalkable(x + offsetX, y)) return false;      // Fila inferior (Pies)
+            if (!isWalkable(x + offsetX, y + 6)) return false;  // Fila central (Cintura)
+            if (!isWalkable(x + offsetX, y + 12)) return false; // Fila superior (Cabeza)
+        }
+        return true;
+    }
+
     @Override
     public boolean canMove(Position from, Position to) {
         // ── BYPASS DE COLISIÓN PARA ALCANTARILLAS ──
@@ -56,56 +70,23 @@ public class MaskCollisionMap implements GameMap {
             }
         }
 
-        // ── SISTEMA ANTI-TÚNEL DE ALTA PRECISIÓN ──
+        // ── SISTEMA ANTI-TÚNEL INTERPOLADO ──
         float dx = to.x() - from.x();
         float dy = to.y() - from.y();
         float distance = (float) Math.hypot(dx, dy);
 
         if (distance == 0) return true;
 
-        // Paso de 1 píxel. Precisión milimétrica o pixel a pixel
-        float stepSize = 1f;
-        int steps = (int) Math.ceil(distance / stepSize);
+        float stepSize = 2f; // Con 15 sensores, saltar de 2 en 2px es perfecto y súper optimizado
+        int steps = (int) Math.max(1, Math.ceil(distance / stepSize));
 
         for (int i = 1; i <= steps; i++) {
             float t = (float) i / steps;
-
-            float currentX = from.x() + dx * t;
-            float currentY = from.y() + dy * t;
-
-            int cX = (int) currentX;
-            int cY = (int) currentY;
-
-            // Hitbox de los pies dividida en 9 sensores (3x3)
-            int margenIzquierdo = cX - 12;
-            int centroX         = cX;
-            int margenDerecho   = cX + 12;
-
-            int basePies  = cY;
-            int medioPies = cY + 6;
-            int topePies  = cY + 12;
-
-            // Comprobamos los 9 puntos. Si ALGUNO toca negro, bloqueamos.
-            if (!(
-                // Fila inferior
-                isWalkable(margenIzquierdo, basePies) &&
-                    isWalkable(centroX, basePies) &&
-                    isWalkable(margenDerecho, basePies) &&
-
-                    // Fila central
-                    isWalkable(margenIzquierdo, medioPies) &&
-                    isWalkable(centroX, medioPies) &&
-                    isWalkable(margenDerecho, medioPies) &&
-
-                    // Fila superior
-                    isWalkable(margenIzquierdo, topePies) &&
-                    isWalkable(centroX, topePies) &&
-                    isWalkable(margenDerecho, topePies)
-            )) {
+            // Evaluamos la red de 15 puntos en cada paso del camino
+            if (!isHitboxClear(from.x() + dx * t, from.y() + dy * t)) {
                 return false;
             }
         }
-
         return true;
     }
 

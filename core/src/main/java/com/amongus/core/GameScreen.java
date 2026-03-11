@@ -4,6 +4,7 @@ import com.amongus.core.api.actions.ActionSender;
 import com.amongus.core.api.map.MapType;
 import com.amongus.core.api.minigame.MinigameScreen;
 import com.amongus.core.api.player.PlayerId;
+import com.amongus.core.api.player.SkinColor;
 import com.amongus.core.api.state.GameState;
 import com.amongus.core.impl.actions.NetworkActionSender;
 import com.amongus.core.impl.engine.GameEngine;
@@ -11,6 +12,7 @@ import com.amongus.core.impl.network.GameClient;
 import com.amongus.core.impl.player.InputHandler;
 import com.amongus.core.view.*;
 import com.amongus.core.view.screens.MainMenuScreen;
+import com.amongus.debug.DebugConfig;
 import com.amongus.debug.DebugEndGame;
 import com.amongus.debug.DebugRenderer;
 import com.badlogic.gdx.Gdx;
@@ -49,7 +51,7 @@ public class GameScreen implements Screen {
     private DebugRenderer debugRenderer;
     private DebugEndGame debugEndGame;
     private boolean showDebug = false;
-    private boolean showDebugEndGame = true;
+    private boolean showDebugEndGame = false;
 
     private boolean isMenuOpen = false;
     private int keyEscape = Input.Keys.ESCAPE;
@@ -64,6 +66,7 @@ public class GameScreen implements Screen {
     private float meetingTimer = 0f;
     private boolean showingMeetingResults = false;
     private boolean meetingWasSkipped = false;
+    private boolean wasEmergency = false;
 
     // --- VARIABLES DE TAREAS (De Eliuber) ---
     private ShapeRenderer shapeRenderer;
@@ -116,14 +119,15 @@ public class GameScreen implements Screen {
         GameSnapshot snapshot = engine.getSnapshot();
 
         // ── ATAJOS DE DEBUG (Solo para desarrollo) ──
+
         if (Gdx.input.isKeyJustPressed(Input.Keys.F1)) {
-            com.amongus.debug.DebugConfig.IGNORE_WIN_CONDITIONS = !com.amongus.debug.DebugConfig.IGNORE_WIN_CONDITIONS;
-            System.out.println("[DEBUG] Ignorar Victorias: " + com.amongus.debug.DebugConfig.IGNORE_WIN_CONDITIONS);
+            DebugConfig.IGNORE_WIN_CONDITIONS = !DebugConfig.IGNORE_WIN_CONDITIONS;
+            System.out.println("[DEBUG] Ignorar Victorias: " + DebugConfig.IGNORE_WIN_CONDITIONS);
         }
 
         if (Gdx.input.isKeyJustPressed(Input.Keys.F2)) {
             // Spawnea un bot azul para que lo uses de víctima
-            engine.spawnTestingBot("Victima", com.amongus.core.api.player.SkinColor.AZUL);
+            engine.spawnTestingBot("Victima", SkinColor.AZUL);
         }
 
         if (engine.getGameResult() != null) {
@@ -221,7 +225,7 @@ public class GameScreen implements Screen {
                 }
 
                 // --- ACCIÓN: Iniciar Partida ---
-                if (Gdx.input.isKeyJustPressed(com.badlogic.gdx.Input.Keys.ENTER) || hudRenderer.isStartClicked()) {
+                if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER) || hudRenderer.isStartClicked()) {
                     engine.startGameHost(clienteRed);
                 }
             }
@@ -240,7 +244,7 @@ public class GameScreen implements Screen {
                 batch.begin();
                 votingRenderer.draw(batch, snapshot, engine.getCurrentReporterId(),
                     meetingTimer, engine.getVotedPlayers(),
-                    true, meetingWasSkipped, engine.isEmergencyMeeting());
+                    true, meetingWasSkipped, wasEmergency);
                 batch.end();
 
                 if (meetingTimer >= 5f) {
@@ -263,7 +267,7 @@ public class GameScreen implements Screen {
 
             clear(0, 0, 0, 1);
 
-            // --- MINIJUEGO OVERLAY (De Eliuber) ---
+            // --- MINIJUEGO OVERLAY ---
             if (engine.getActiveMinigame() != null) {
                 renderGameplay(snapshot); // Mapa de fondo
                 renderMinigameOverlay(engine.getActiveMinigame(), delta);
@@ -335,6 +339,7 @@ public class GameScreen implements Screen {
             batch.end();
 
             if (meetingTimer >= 60f || todosVotaron) {
+                wasEmergency = engine.isEmergencyMeeting();
                 java.util.Optional<PlayerId> expulsado = engine.resolveVoting();
                 meetingWasSkipped = expulsado.isEmpty();
 

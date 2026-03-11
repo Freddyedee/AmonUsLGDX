@@ -323,13 +323,13 @@ public class GameEngine {
 
         player.setVenting(!exiting);
         if (!exiting && targetVent != null) {
-            session.movePlayer(pId, targetVent);
+            forceMovePlayer(pId, targetVent);
         }
     }
 
     private Position getSpawnPositionForMap() {
         if (mapType == MapType.MAPA_1) {
-            return new Position(1650f, 150f);
+            return new Position(1655f, 200f);
         } else {
             return new Position(1700f, 1600f);
         }

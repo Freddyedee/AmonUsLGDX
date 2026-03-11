@@ -25,12 +25,16 @@ public class InputHandler {
     private final PlayerId localPlayerId;
 
     private static final float KILL_RANGE = 150f;
-    private static final float KILL_COOLDOWN = 15.0f;
+    private static final float KILL_COOLDOWN = 32.0f;
     private static final float REPORT_RANGE = 120f;
+
     // Posiciones de los botones de emergencia
     private static final Position EMERGENCY_MAP1 = new Position(339f, 1240f);
     private static final Position EMERGENCY_MAP2 = new Position(2331f, 1275f);
     private static final float EMERGENCY_RADIUS = 150f;
+
+    private float emergencyCooldown = 30f;
+    private GameState previousState = GameState.LOBBY;
 
     private int keyKill = Input.Keys.Q;
     private int keyReport = Input.Keys.F;
@@ -39,18 +43,13 @@ public class InputHandler {
     private int keyVent = Input.Keys.V;
     private final java.util.Set<PlayerId> staleCorpses = new java.util.HashSet<>();
 
-    private Position getEmergencyButtonPos() {
-        return engine.getMapType() == MapType.MAPA_1 ? EMERGENCY_MAP1 : EMERGENCY_MAP2;
-    }
-
     private int direccion = 1;
     private float killCooldown = 0;
     private PlayerId reporterId = null;
     private PlayerId reportedCorpseId = null;
 
     private PlayerId spectatedPlayerId = null;
-
-    private boolean canVent = false; // NUEVO: Para decirle al HUD si dibujar el botón
+    private boolean canVent = false;
 
     public InputHandler(ActionSender actionSender, GameEngine engine, PlayerId localPlayerId) {
         this.actionSender = actionSender;
@@ -58,7 +57,28 @@ public class InputHandler {
         this.localPlayerId = localPlayerId;
     }
 
+    private Position getEmergencyButtonPos() {
+        return engine.getMapType() == MapType.MAPA_1 ? EMERGENCY_MAP1 : EMERGENCY_MAP2;
+    }
+
+    public float getEmergencyCooldown() {
+        return Math.max(0, emergencyCooldown);
+    }
+
+    public boolean isNearEmergencyTable(GameSnapshot snapshot) {
+        PlayerView me = findLocalPlayer(snapshot);
+        if (me == null || !me.isAlive()) return false;
+        Position emPos = getEmergencyButtonPos();
+        return Vector2.dst(me.getPosition().x(), me.getPosition().y(), emPos.x(), emPos.y()) <= EMERGENCY_RADIUS;
+    }
+
     public void handleGameInput(GameSnapshot snapshot, float delta) {
+        // Detectar el inicio de la partida o fin de la reunión
+        if (snapshot.getState() == GameState.IN_GAME && previousState != GameState.IN_GAME) {
+            emergencyCooldown = 30f;
+        }
+        previousState = snapshot.getState();
+
         PlayerView me = findLocalPlayer(snapshot);
         if (me == null) return;
 
@@ -71,7 +91,7 @@ public class InputHandler {
 
         // ── LÓGICA DE CAMBIO DE COLOR EN EL LOBBY  ──
         if (snapshot.getState() == GameState.LOBBY) {
-            staleCorpses.clear(); // Limpiamos la memoria de cuerpos al iniciar partida
+            staleCorpses.clear();
             if (Gdx.input.isKeyJustPressed(Input.Keys.C)) {
                 com.amongus.core.api.player.SkinColor[] colors = com.amongus.core.api.player.SkinColor.values();
                 int currentIndex = 0;
@@ -98,7 +118,7 @@ public class InputHandler {
 
             if (me.isVenting()) {
                 if (Gdx.input.isKeyJustPressed(keyVent)) {
-                    executeVent(snapshot); // Sale
+                    executeVent(snapshot);
                 } else if (Gdx.input.isKeyJustPressed(Input.Keys.RIGHT) || Gdx.input.isKeyJustPressed(Input.Keys.D)) {
                     Position next = engine.getNextVent(me.getPosition(), 1);
                     if (next != null) actionSender.send(new VentAction(localPlayerId, next, false));
@@ -108,10 +128,10 @@ public class InputHandler {
                 }
 
                 updateTimers(delta);
-                return; // Cortamos el flujo para que no camine
+                return;
             } else {
                 if (Gdx.input.isKeyJustPressed(keyVent)) {
-                    executeVent(snapshot); // Entra
+                    executeVent(snapshot);
                     return;
                 }
             }
@@ -123,13 +143,14 @@ public class InputHandler {
         handleKillInput(snapshot);
         handleReportInput(snapshot);
 
-        // --- INTERACCIÓN CON TAREAS (Teclado) ---
-        // Restauramos el uso de la tecla 'E' (como el Among Us original)
+        // --- INTERACCIÓN CON TAREAS/EMERGENCIA (Teclado) ---
         if (Gdx.input.isKeyJustPressed(Input.Keys.E)) {
             executeInteraction(snapshot);
         }
     }
+
     public void handleMeetingInput(GameSnapshot snapshot, float meetingTimer) {
+        previousState = snapshot.getState();
         for (PlayerView pv : snapshot.getPlayers()) {
             if (!pv.isAlive()) {
                 staleCorpses.add(pv.getId());
@@ -137,6 +158,7 @@ public class InputHandler {
         }
         handleVoteInput(snapshot, meetingTimer);
     }
+
     private void handleMovement(float delta) {
         float speed = 250f;
         float dx = 0, dy = 0;
@@ -237,11 +259,11 @@ public class InputHandler {
         if (me == null || !me.isAlive() || me.getRole() != Role.IMPOSTOR) return;
 
         if (me.isVenting()) {
-            actionSender.send(new VentAction(localPlayerId, null, true)); // SALIR
+            actionSender.send(new VentAction(localPlayerId, null, true));
         } else {
             Position nearest = engine.getNearestVent(me.getPosition(), 50f);
             if (nearest != null) {
-                actionSender.send(new VentAction(localPlayerId, nearest, false)); // ENTRAR
+                actionSender.send(new VentAction(localPlayerId, nearest, false));
             }
         }
     }
@@ -250,7 +272,10 @@ public class InputHandler {
         if (hud.isKillClicked()) executeKill(snapshot);
         if (hud.isReportClicked()) executeReport(snapshot);
         if (hud.isVentClicked()) executeVent(snapshot);
-        if (hud.isConfigurationClicked());
+        if (hud.isConfigurationClicked()) {
+            // Aquí puedes lanzar un evento de pausa o abrir el menú si lo deseas,
+            // pero actualmente GameScreen se encarga de esto leyendo hudRenderer.isConfigurationClicked() directamente.
+        }
     }
 
     public PlayerView handleReportInput(GameSnapshot snapshot) {
@@ -291,27 +316,24 @@ public class InputHandler {
         }
     }
 
-    // Cambiamos el nombre y añadimos la lógica de prioridad
     public void executeInteraction(GameSnapshot snapshot) {
         PlayerView me = findLocalPlayer(snapshot);
         if (me == null || !me.isAlive()) return;
 
         // --- 1. PRIORIDAD: BOTÓN DE EMERGENCIA ---
-        Position emPos = getEmergencyButtonPos();
-        if (Vector2.dst(me.getPosition().x(), me.getPosition().y(), emPos.x(), emPos.y()) <= EMERGENCY_RADIUS) {
+        if (isNearEmergencyTable(snapshot) && emergencyCooldown <= 0) {
             reporterId = localPlayerId;
             reportedCorpseId = null;
-            // Usamos el ReportAction con el "código secreto" para que viaje por red sin crear paquetes nuevos
             PlayerId emergencyId = new PlayerId(java.util.UUID.fromString("00000000-0000-0000-0000-000000000000"));
             actionSender.send(new ReportAction(localPlayerId, emergencyId));
-            return; // Cortamos para que no abra tareas
+            return;
         }
 
         // --- 2. SECUNDARIO: TAREAS ---
         snapshot.getTasks().stream()
             .filter(tv -> Vector2.dst(
                 me.getPosition().x(), me.getPosition().y(),
-                tv.getPosition().x(), tv.getPosition().y()) <= 50f)
+                tv.getPosition().x(), tv.getPosition().y()) <= 150f)
             .min(Comparator.comparingDouble(tv -> Vector2.dst(
                 me.getPosition().x(), me.getPosition().y(),
                 tv.getPosition().x(), tv.getPosition().y())))
@@ -320,24 +342,27 @@ public class InputHandler {
 
     private void updateTimers(float delta) {
         if (killCooldown > 0) killCooldown -= delta;
+        if (emergencyCooldown > 0) emergencyCooldown -= delta;
     }
 
     private PlayerView findLocalPlayer(GameSnapshot snapshot) {
         return snapshot.getPlayers().stream().filter(p -> p.getId().equals(localPlayerId)).findFirst().orElse(null);
     }
 
-    // Metodo que evalúa si hay una tarea cerca
+    // Metodo que evalúa si hay una tarea o emergencia cerca para encender el botón
     public boolean canUse(GameSnapshot snapshot) {
         PlayerView me = findLocalPlayer(snapshot);
         if (me == null || !me.isAlive()) return false;
 
-        // 1. Verifica si está cerca de una tarea
         boolean nearTask = snapshot.getTasks().stream()
-            .anyMatch(tv -> Vector2.dst(me.getPosition().x(), me.getPosition().y(), tv.getPosition().x(), tv.getPosition().y()) <= 50f);
+            .anyMatch(tv -> Vector2.dst(me.getPosition().x(), me.getPosition().y(), tv.getPosition().x(), tv.getPosition().y()) <= 150f);
 
-        // 2. Verifica si está cerca de la mesa de emergencia
-        Position emPos = getEmergencyButtonPos();
-        boolean nearEmergency = Vector2.dst(me.getPosition().x(), me.getPosition().y(), emPos.x(), emPos.y()) <= EMERGENCY_RADIUS;
+        boolean nearEmergency = isNearEmergencyTable(snapshot);
+
+        // Si hay cooldown, el botón de "usar" NO se ilumina por la mesa
+        if (nearEmergency && emergencyCooldown > 0) {
+            nearEmergency = false;
+        }
 
         return nearTask || nearEmergency;
     }
