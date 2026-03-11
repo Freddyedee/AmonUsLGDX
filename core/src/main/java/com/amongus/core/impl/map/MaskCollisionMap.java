@@ -22,8 +22,8 @@ public class MaskCollisionMap implements GameMap {
         this.tempColor = new com.badlogic.gdx.graphics.Color();
 
         String pathName = maskPath.toLowerCase();
-
-        // ── MAPA 1: Tus coordenadas exactas ──
+        // ── Ventilaciones ──
+        // ── MAPA 1: Coordenadas exactas ──
         if (pathName.endsWith("mapacolisiones.png")) {
             ventNetworks.add(Arrays.asList(fromPaint(565, 57), fromPaint(1583, 1007)));
             ventNetworks.add(Arrays.asList(fromPaint(2300, 394), fromPaint(2132, 1016), fromPaint(3052, 1006)));
@@ -31,7 +31,7 @@ public class MaskCollisionMap implements GameMap {
 
             System.out.println("[MAPA] Ventilaciones del Mapa 1 cargadas.");
 
-            // ── MAPA 2: Tus coordenadas exactas ──
+        // ── MAPA 2: Coordenadas exactas ──
         } else if (pathName.endsWith("mapacolisiones2.png")) {
             ventNetworks.add(Arrays.asList(fromPaint(725, 21), fromPaint(1794, 232)));
             ventNetworks.add(Arrays.asList(fromPaint(46, 1043), fromPaint(1614, 1333), fromPaint(766, 1852)));
