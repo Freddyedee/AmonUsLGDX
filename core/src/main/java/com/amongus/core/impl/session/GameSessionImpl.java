@@ -13,8 +13,13 @@ import com.amongus.core.api.state.GameState;
 import com.amongus.core.api.task.Task;
 import com.amongus.core.api.task.TaskId;
 import com.amongus.core.impl.engine.GameEngine;
+import com.amongus.core.impl.minigame.providers.FixLightsMinigameProvider;
+import com.amongus.core.impl.minigame.providers.InternetSabotageMinigameProvider;
+import com.amongus.core.impl.sabotage.SabotageManager;
 import com.amongus.core.impl.state.GameStateMachine;
 import com.amongus.core.impl.task.TaskFactory;
+import com.amongus.core.impl.task.sabotageTask.FixLightsSabotageTask;
+import com.amongus.core.impl.task.sabotageTask.InternetSabotageTask;
 import com.amongus.core.model.Position;
 import com.badlogic.gdx.Game;
 import com.badlogic.gdx.Gdx;
@@ -72,17 +77,16 @@ public class GameSessionImpl implements GameSession {
 
     private TaskProgressTracker progressTracker;
 
+    //sabotaje
+    private InternetSabotageTask internetSabotageTask;
+    private FixLightsSabotageTask fixLightsSabotageTask;
+
     /**
      * Tareas asignadas a los jugadores.
      * No todas las partidas las usan de inmediato,
      * pero el core mantiene la estructura preparada.
      */
     // private final Map<PlayerId, List<Task>> taskByPlayer;
-
-
-
-
-
 
 
     /*
@@ -119,18 +123,14 @@ public class GameSessionImpl implements GameSession {
         this.currentVotes = new HashMap<>();
 
         eventBus.subscribe(TaskCompletedEvent.class, event -> {
-            // Mover la tarea de asignadas a completadas
-            PlayerId pid = event.getPlayerId();
-            TaskId   tid = event.getTaskId();
+            assignedTaskIdsByPlayer.getOrDefault(event.getPlayerId(), new HashSet<>())
+                .remove(event.getTaskId());
+            completedTaskIdsByPlayer.computeIfAbsent(event.getPlayerId(), k -> new HashSet<>())
+                .add(event.getTaskId());
 
-            assignedTaskIdsByPlayer.getOrDefault(pid, new HashSet<>()).remove(tid);
-            completedTaskIdsByPlayer.computeIfAbsent(pid, k -> new HashSet<>()).add(tid);
-
-            // Actualizar progreso global
-            if (progressTracker != null) {
-                progressTracker.taskCompleted();
-                System.out.println("[progreso] pendientes: " + progressTracker.getPending()
-                    + "/" + progressTracker.getTotal());
+            Task task = allTasks.get(event.getTaskId());
+            if (progressTracker != null && task != null && task.countsForProgress()) {
+                progressTracker.taskCompleted(); // ← solo si no es sabotaje
             }
         });
 
@@ -199,6 +199,22 @@ public class GameSessionImpl implements GameSession {
             taskFactory.createLibraryTask(new Position(1000,700))
         ));
 
+        InternetSabotageTask saboTask = new InternetSabotageTask(
+            TaskId.random(),
+            new Position(550, 520),  // posición en el mapa
+            new InternetSabotageMinigameProvider(engine, engine.getSabotageManager())
+        );
+        internetSabotageTask = saboTask;
+
+        FixLightsSabotageTask lightsTask = new FixLightsSabotageTask(
+            TaskId.random(),
+            new Position(600, 600),
+            new FixLightsMinigameProvider(engine, engine.getSabotageManager())
+        );
+        fixLightsSabotageTask = lightsTask;
+        allTasks.put(lightsTask.getId(), lightsTask);
+        allTasks.put(saboTask.getId(), saboTask);
+
         tasks.addAll(gasolineTasks);
         tasks.addAll(trashTasks);
 
@@ -215,7 +231,11 @@ public class GameSessionImpl implements GameSession {
         }
         // Contar total: suma de tareas por cada crewmate
         int total = assignedTaskIdsByPlayer.values().stream()
-            .mapToInt(Set::size)
+            .flatMap(Set::stream)
+            .distinct()
+            .map(allTasks::get)
+            .filter(t -> t != null && t.countsForProgress())  // ← filtrar sabotajes
+            .mapToInt(t -> 1)
             .sum();
         this.progressTracker = new TaskProgressTracker(total);
         System.out.println("[startGame] total tareas globales: " + total);
@@ -423,6 +443,33 @@ public class GameSessionImpl implements GameSession {
             .toList();
     }
 
+    public void activateSabotageTask(SabotageManager.SabotageType type) {
+        if (type == SabotageManager.SabotageType.INTERNET && internetSabotageTask != null) {
+            TaskId id = internetSabotageTask.getId();
+
+            // Quitar de completadas para todos los jugadores (reset)
+            completedTaskIdsByPlayer.values().forEach(set -> set.remove(id));
+
+            // Asignar a todos los jugadores
+            players.values().forEach(p ->
+                assignedTaskIdsByPlayer
+                    .computeIfAbsent(p.getId(), k -> new HashSet<>())
+                    .add(id));
+
+            System.out.println("[Sabotage] Internet activado y reseteado para todos.");
+        }
+
+        if (type == SabotageManager.SabotageType.LIGHTS && fixLightsSabotageTask != null) {
+            TaskId id = fixLightsSabotageTask.getId();
+            completedTaskIdsByPlayer.values().forEach(set -> set.remove(id));
+            players.values().forEach(p ->
+                assignedTaskIdsByPlayer
+                    .computeIfAbsent(p.getId(), k -> new HashSet<>())
+                    .add(id));
+            System.out.println("[Sabotage] Lights activado para todos.");
+        }
+    }
+
 /* ============================================================
        MÉTODOS AUXILIARES (PRIVADOS)
        ============================================================ */
@@ -462,5 +509,19 @@ public class GameSessionImpl implements GameSession {
     }
 
 
+    public InternetSabotageTask getInternetSabotageTask() { return internetSabotageTask; }
 
+    @Override
+    public Player getPlayer(PlayerId playerId) {
+        return players.get(playerId);
+    }
+
+    public List<Task> getAllTasks() {
+        return new ArrayList<>(allTasks.values());
+    }
+
+    public boolean isImpostor(PlayerId playerId) {
+        Player p = players.get(playerId);
+        return p != null && p.getRole().isImpostor();
+    }
 }

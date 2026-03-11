@@ -34,7 +34,7 @@ public class AmongUsGame extends Game {
 
         engine.assignRole(testPlayer, Role.CREWMATE);
         engine.assignRole(jugador3, Role.CREWMATE);
-        engine.assignRole(myPlayerId, Role.CREWMATE);
+        engine.assignRole(myPlayerId, Role.IMPOSTOR);
 
         engine.startGame();
 

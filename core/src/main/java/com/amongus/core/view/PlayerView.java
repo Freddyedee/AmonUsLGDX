@@ -73,4 +73,5 @@ public final class PlayerView {
                 ", position=" + position +
                 '}';
     }
+
 }

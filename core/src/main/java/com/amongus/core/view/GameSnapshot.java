@@ -3,6 +3,7 @@ package com.amongus.core.view;
 import com.amongus.core.api.state.GameState;
 import com.amongus.core.api.player.PlayerId; // Añadimos esto
 import com.amongus.core.api.task.Task;
+import com.badlogic.gdx.math.Rectangle;
 
 import java.util.List;
 
@@ -47,5 +48,12 @@ public final class GameSnapshot {
 
     public int getCompletedTasks() {
         return completedTasks;
+    }
+
+    public PlayerView getLocalPlayer() {
+        return players.stream()
+            .filter(p -> p.getId().equals(localPlayerId))
+            .findFirst()
+            .orElse(null);
     }
 }

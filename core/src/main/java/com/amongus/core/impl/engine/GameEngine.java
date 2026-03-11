@@ -16,6 +16,7 @@ import com.amongus.core.api.task.Task;
 import com.amongus.core.api.task.TaskId;
 import com.amongus.core.impl.event.EventBusImpl;
 import com.amongus.core.impl.map.SimpleMap;
+import com.amongus.core.impl.sabotage.SabotageManager;
 import com.amongus.core.impl.session.GameSessionImpl;
 import com.amongus.core.view.GameSnapshot;
 import com.amongus.core.view.PlayerView;
@@ -58,6 +59,7 @@ public class GameEngine {
 
     //para pantalla de minijuego
     private MinigameScreen activeMinigame = null;
+    private final SabotageManager sabotageManager = new SabotageManager();
 
     // Flag de debug — cambiar a false para activar roles aleatorios
     private static final boolean DEBUG_ROLES = true;
@@ -67,9 +69,6 @@ public class GameEngine {
         this.eventBus = new EventBusImpl();
         this.gameMap = new SimpleMap();
         this.session = new GameSessionImpl(sessionId, eventBus, gameMap, this);
-
-
-
     }
 
     /* ===================== CONSULTAS ===================== */
@@ -86,8 +85,13 @@ public class GameEngine {
             })
             .toList();
 
-        // NUEVO: Obtenemos las tareas del jugador local
-        List<Task> playerTasks = session.getAllTasksForPlayer(localPlayerId);
+        List<Task> playerTasks;
+        if (session.isImpostor(localPlayerId)) {
+            // El impostor ve todos los objetos pero no puede interactuar
+            playerTasks = session.getAllTasks();
+        } else {
+            playerTasks = session.getAllTasksForPlayer(localPlayerId);
+        }
         //System.out.println("[getSnapshot] tareas para " + localPlayerId + ": " + playerTasks.size());
 
         // Convertimos a TaskView para la UI
@@ -123,6 +127,10 @@ public class GameEngine {
 
     public void initiateTask(TaskId taskId) {
         session.initiateTask(localPlayerId, taskId);
+    }
+
+    public void activateSabotageTask(SabotageManager.SabotageType type) {
+        session.activateSabotageTask(type);
     }
 
     /* ===================== CASOS DE USO ===================== */
@@ -295,4 +303,12 @@ public class GameEngine {
     }
     public MinigameScreen getActiveMinigame() { return activeMinigame; }
     public void clearActiveMinigame()        { this.activeMinigame = null; }
+
+    //de sabotaje
+    public SabotageManager getSabotageManager() { return sabotageManager; }
+
+    public boolean isLocalPlayerImpostor() {
+        Player p = session.getPlayer(localPlayerId);
+        return p != null && p.getRole().isImpostor();
+    }
 }
