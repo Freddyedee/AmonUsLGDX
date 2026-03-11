@@ -92,7 +92,7 @@ public class MaskCollisionMap implements GameMap {
                     isWalkable(centroX, basePies) &&
                     isWalkable(margenDerecho, basePies) &&
 
-                    // Fila central (¡El punto ciego que te estaba fallando!)
+                    // Fila central
                     isWalkable(margenIzquierdo, medioPies) &&
                     isWalkable(centroX, medioPies) &&
                     isWalkable(margenDerecho, medioPies) &&
