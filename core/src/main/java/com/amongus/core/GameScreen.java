@@ -94,7 +94,7 @@ public class GameScreen implements Screen {
     private Texture visionMask;
     private boolean lightsSabotaged = false;
     private static final float DEFAULT_VISION_RADIUS = 280f;
-    private static final float SABOTAGED_VISION_RADIUS = 100f; // Súper reducido
+    private static final float SABOTAGED_VISION_RADIUS = 110f; // Súper reducido
     private float darknessAlpha = 0f;
 
     public GameScreen(GameEngine engine, GameClient clienteRed, boolean isHost) {
@@ -300,7 +300,7 @@ public class GameScreen implements Screen {
             hudRenderer.drawConfigButton(batch);
 
             // 2. Dibujamos los botones del HUD (Engañamos al HUD diciéndole que somos CREWMATE para que ponga el botón USAR a la derecha)
-            hudRenderer.draw(batch, false, false, false, canUseConsole, delta, 0f, com.amongus.core.api.player.Role.CREWMATE);
+            hudRenderer.draw(batch, false, false, false, canUseConsole, delta, 0f, Role.CREWMATE);
 
             // Lógica exclusiva del HOST
             if (isHost) {

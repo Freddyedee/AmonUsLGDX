@@ -9,7 +9,7 @@ import com.amongus.core.model.Position;
 
 public class BasicTask implements Task {
 
-    private static final float INTERACTION_RADIUS = 150f;
+    private static final float INTERACTION_RADIUS = 50f;
 
     //Atributos de Task
     private final TaskId taskId;

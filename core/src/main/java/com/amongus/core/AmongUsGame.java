@@ -33,8 +33,8 @@ public class AmongUsGame extends Game {
 
         // 2. Creamos NUESTRO jugador con ese color
         PlayerId myPlayerId = engine.spawnPlayer(playerName, myColor);
-        engine.assignRole(myPlayerId, com.amongus.core.api.player.Role.CREWMATE);
-        engine.movePlayer(myPlayerId, new com.amongus.core.model.Position(1920f, 1080f));
+        engine.assignRole(myPlayerId, Role.CREWMATE);
+        engine.movePlayer(myPlayerId, new Position(1920f, 1080f));
 
         // 3. Conectamos a la red (Añade el parámetro myColor al constructor)
         GameClient clienteRed = new GameClient(engine, isHost, myPlayerId, playerName, myColor);

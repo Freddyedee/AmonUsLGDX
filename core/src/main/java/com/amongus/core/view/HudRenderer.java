@@ -1,7 +1,5 @@
 package com.amongus.core.view;
 
-import com.amongus.core.GameScreen;
-import com.amongus.core.api.state.GameState;
 import com.amongus.core.api.player.Role; // Añadido para verificar si es impostor
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
@@ -35,8 +33,6 @@ public class HudRenderer {
     private float reportX;
     private float ventX;
     private float useX; // NUEVO
-    private float configurationX;
-    private float configurationY;
 
     private final BitmapFont font;
 

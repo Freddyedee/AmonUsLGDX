@@ -4,6 +4,7 @@ import com.amongus.core.api.actions.ActionSender;
 import com.amongus.core.api.map.MapType;
 import com.amongus.core.api.player.PlayerId;
 import com.amongus.core.api.state.GameState;
+import com.amongus.core.api.task.TaskType;
 import com.amongus.core.impl.actions.*;
 import com.amongus.core.impl.engine.GameEngine;
 import com.amongus.core.model.Position;
@@ -24,23 +25,22 @@ public class InputHandler {
     private final GameEngine engine;
     private final PlayerId localPlayerId;
 
-    private static final float KILL_RANGE = 150f;
-    private static final float KILL_COOLDOWN = 32.0f;
-    private static final float REPORT_RANGE = 120f;
+    private static final float KILL_RANGE = 100f;
+    private static final float KILL_COOLDOWN = 25.0f;
+    private static final float REPORT_RANGE = 100f;
 
     // Posiciones de los botones de emergencia
     private static final Position EMERGENCY_MAP1 = new Position(339f, 1240f);
     private static final Position EMERGENCY_MAP2 = new Position(2331f, 1275f);
-    private static final float EMERGENCY_RADIUS = 150f;
+    private static final float EMERGENCY_RADIUS = 100f;
 
     private float emergencyCooldown = 30f;
     private float freezeTimer = 0f;
     private GameState previousState = GameState.LOBBY;
 
     private int keyKill = Input.Keys.Q;
-    private int keyReport = Input.Keys.F;
+    private int keyReport = Input.Keys.R;
     private int keySkip = Input.Keys.S;
-    private int keyVoteConfirm = Input.Keys.ENTER;
     private int keyVent = Input.Keys.V;
     private final java.util.Set<PlayerId> staleCorpses = new java.util.HashSet<>();
 
@@ -274,12 +274,12 @@ public class InputHandler {
 
     public void executeVent(GameSnapshot snapshot) {
         PlayerView me = findLocalPlayer(snapshot);
-        if (me == null || !me.isAlive() || me.getRole() != Role.IMPOSTOR) return;
+        if (!me.isAlive() || me.getRole() != Role.IMPOSTOR) return;
 
         if (me.isVenting()) {
             actionSender.send(new VentAction(localPlayerId, null, true));
         } else {
-            Position nearest = engine.getNearestVent(me.getPosition(), 50f);
+            Position nearest = engine.getNearestVent(me.getPosition(), 60f);
             if (nearest != null) {
                 actionSender.send(new VentAction(localPlayerId, nearest, false));
             }
@@ -290,10 +290,6 @@ public class InputHandler {
         if (hud.isKillClicked()) executeKill(snapshot);
         if (hud.isReportClicked()) executeReport(snapshot);
         if (hud.isVentClicked()) executeVent(snapshot);
-        if (hud.isConfigurationClicked()) {
-            // Aquí puedes lanzar un evento de pausa o abrir el menú si lo deseas,
-            // pero actualmente GameScreen se encarga de esto leyendo hudRenderer.isConfigurationClicked() directamente.
-        }
     }
 
     public PlayerView handleReportInput(GameSnapshot snapshot) {
@@ -338,8 +334,12 @@ public class InputHandler {
         PlayerView me = findLocalPlayer(snapshot);
         if (me == null || !me.isAlive()) return;
 
+        // Verificamos si hay un sabotaje activo
+        boolean isSabotageActive = snapshot.getTasks().stream()
+            .anyMatch(tv -> tv.getTaskType() == TaskType.SABOTAGE && !tv.isCompleted());
+
         // --- 1. PRIORIDAD: BOTÓN DE EMERGENCIA ---
-        if (isNearEmergencyTable(snapshot) && emergencyCooldown <= 0) {
+        if (isNearEmergencyTable(snapshot) && emergencyCooldown <= 0 && !isSabotageActive) {
             reporterId = localPlayerId;
             reportedCorpseId = null;
             PlayerId emergencyId = new PlayerId(java.util.UUID.fromString("00000000-0000-0000-0000-000000000000"));
@@ -378,9 +378,18 @@ public class InputHandler {
         if (me == null || !me.isAlive()) return false;
 
         boolean nearTask = snapshot.getTasks().stream()
-            .anyMatch(tv -> Vector2.dst(me.getPosition().x(), me.getPosition().y(), tv.getPosition().x(), tv.getPosition().y()) <= 150f);
+            .anyMatch(tv -> Vector2.dst(me.getPosition().x(), me.getPosition().y(), tv.getPosition().x(), tv.getPosition().y()) <= 70f);
 
         boolean nearEmergency = isNearEmergencyTable(snapshot);
+
+        // Verificamos si hay algún sabotaje activo en la partida
+        boolean isSabotageActive = snapshot.getTasks().stream()
+            .anyMatch(tv -> tv.getTaskType() == TaskType.SABOTAGE && !tv.isCompleted());
+
+        // Si hay cooldown O hay un sabotaje, el botón NO se ilumina por la mesa
+        if (nearEmergency && (emergencyCooldown > 0 || isSabotageActive)) {
+            nearEmergency = false;
+        }
 
         // Si hay cooldown, el botón de "usar" NO se ilumina por la mesa
         if (nearEmergency && emergencyCooldown > 0) {
