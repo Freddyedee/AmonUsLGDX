@@ -68,7 +68,7 @@ public class IntroOverlay {
             text = "IMPOSTOR";
             textColor = Color.RED; // Letras rojas gigantes
         } else {
-            text = "CREWMATE";
+            text = "TRIPULANTE";
             textColor = Color.CYAN; // Letras cian gigantes
         }
 

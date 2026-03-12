@@ -173,7 +173,48 @@ public class InputHandler {
                 staleCorpses.add(pv.getId());
             }
         }
+
+        // --- CLICS DE MOUSE PARA EL CHAT ---
+        if (Gdx.input.isButtonJustPressed(Input.Buttons.LEFT)) {
+            float screenX = Gdx.input.getX();
+            float screenY = Gdx.graphics.getHeight() - Gdx.input.getY();
+            float scaleX = 3840f / Gdx.graphics.getWidth();
+            float scaleY = 2160f / Gdx.graphics.getHeight();
+            float worldX = screenX * scaleX;
+            float worldY = screenY * scaleY;
+
+            // Click en el toggle del chat
+            if (votingRenderer.btnChatToggleHitbox != null && votingRenderer.btnChatToggleHitbox.contains(worldX, worldY)) {
+                toggleChat(votingRenderer);
+                return; // Evita que se propague al voto
+            }
+        }
+
+        // Revisar si hay un mensaje pendiente por enviar desde el campo de texto
+        String pendingMsg = votingRenderer.getAndClearPendingMessage();
+        if (pendingMsg != null && !pendingMsg.isEmpty()) {
+            actionSender.send(new ChatAction(localPlayerId, pendingMsg));
+        }
+
+        // Si el chat está abierto, no procesamos clics de votación para evitar missclicks
+        if (votingRenderer.isChatOpen) return;
+
         handleVoteInput(snapshot, meetingTimer, votingRenderer);
+    }
+
+    private void toggleChat(VotingRenderer votingRenderer) {
+        votingRenderer.isChatOpen = !votingRenderer.isChatOpen;
+        if (votingRenderer.isChatOpen) {
+            Gdx.input.setInputProcessor(votingRenderer.stage);
+            votingRenderer.stage.setKeyboardFocus(votingRenderer.chatField);
+        } else {
+            Gdx.input.setInputProcessor(null);
+            votingRenderer.stage.unfocusAll();
+        }
+    }
+
+    public void addStaleCorpse(PlayerId id) {
+        staleCorpses.add(id);
     }
 
     private void handleMovement(float delta) {

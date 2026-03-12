@@ -232,6 +232,19 @@ public class GameClient extends Thread{
                             engine.changePlayerColor(colorId, newColor);
                         }
                         break;
+                    case "CHAT":
+                        PlayerId chatSenderId = new PlayerId(java.util.UUID.fromString(partes[1]));
+                        // Reconstruir el mensaje en caso de que contenga ':'
+                        StringBuilder sb = new StringBuilder();
+                        for (int i = 2; i < partes.length; i++) {
+                            sb.append(partes[i]);
+                            if (i < partes.length - 1) sb.append(":");
+                        }
+                        String chatMessage = sb.toString();
+                        if (playerExists(chatSenderId)) {
+                            engine.addChatMessage(chatSenderId, chatMessage);
+                        }
+                        break;
                     case "CHANGE_MAP":
                         MapType nuevoMapa = MapType.valueOf(partes[1]);
                         engine.setMapType(nuevoMapa);

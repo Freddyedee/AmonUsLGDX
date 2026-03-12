@@ -33,6 +33,7 @@ public class NetworkActionSender implements ActionSender {
             case VOTE   -> engine.castVote(new VoteImpl(action.getPlayerId(), ((VoteAction) action).getTargetId()));
             case VENT -> engine.processVentAction(action.getPlayerId(), ((VentAction)action).getTargetVent(), ((VentAction)action).isExiting());
             case CHANGE_COLOR -> engine.changePlayerColor(action.getPlayerId(), ((ChangeColorAction) action).getNewColor());
+            case CHAT -> engine.addChatMessage(action.getPlayerId(), ((ChatAction) action).getMessage());
             case SABOTAGE -> {
                 SabotageAction sa = (SabotageAction) action;
                 engine.getSabotageManager().forceActivateSabotage(sa.getSabotageType());
@@ -78,6 +79,10 @@ public class NetworkActionSender implements ActionSender {
                 case CHANGE_COLOR -> {
                     ChangeColorAction ca = (ChangeColorAction) action;
                     client.enviarMensaje("COLOR:" + ca.getPlayerId().value() + ":" + ca.getNewColor().name());
+                }
+                case CHAT -> {
+                    ChatAction ca = (ChatAction) action;
+                    client.enviarMensaje("CHAT:" + ca.getPlayerId().value() + ":" + ca.getMessage());
                 }
                 case SABOTAGE -> {
                     SabotageAction sa = (SabotageAction) action;

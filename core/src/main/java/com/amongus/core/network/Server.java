@@ -12,13 +12,16 @@ public class Server extends Thread {
     private final List<PlayerHandler> clients = Collections.synchronizedList(new ArrayList<>());
     private ServerSocket serverSocket; // Atributo de clase
 
+    public Server() {
+        // Inicializamos el socket en el constructor (hilo principal)
+        // para asegurar que el puerto esté abierto antes de que el cliente intente conectarse.
+        serverSocket = Gdx.net.newServerSocket(Net.Protocol.TCP, 5000, null);
+        System.out.println("[SERVIDOR] Servidor se ha iniciado en el puerto 5000");
+    }
+
     @Override
     public void run() {
         try {
-            // Asignamos a la variable de clase
-            serverSocket = Gdx.net.newServerSocket(Net.Protocol.TCP, 5000, null);
-            System.out.println("[SERVIDOR] Servidor se ha iniciado en el puerto 5000");
-
             while(true) {
                 Socket socketClient = serverSocket.accept(null);
                 PlayerHandler newPlayer = new PlayerHandler(socketClient, this);
@@ -35,11 +38,13 @@ public class Server extends Thread {
     //Recibe el mensaje del jugador y le avisa a los demas
     public void enviarATodos(String mensaje, PlayerHandler remitente) {
         // Hacemos una copia de la lista para iterar de forma segura
+        List<PlayerHandler> copia;
         synchronized(clients) {
-            for(PlayerHandler p : clients) {
-                if(p != remitente) {
-                    p.enviarMensaje(mensaje);
-                }
+            copia = new ArrayList<>(clients);
+        }
+        for(PlayerHandler p : copia) {
+            if(p != remitente) {
+                p.enviarMensaje(mensaje);
             }
         }
     }

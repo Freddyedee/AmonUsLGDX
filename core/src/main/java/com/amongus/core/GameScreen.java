@@ -351,12 +351,24 @@ public class GameScreen implements Screen {
                 batch.begin();
                 votingRenderer.draw(batch, snapshot, engine.getCurrentReporterId(),
                     meetingTimer, engine.getVotedPlayers(),
-                    true, meetingWasSkipped, wasEmergency, null);
+                    true, meetingWasSkipped, wasEmergency, null, engine.getChatMessages());
                 batch.end();
+
+                if (votingRenderer.isChatOpen && votingRenderer.stage != null) {
+                    votingRenderer.stage.act(delta);
+                    votingRenderer.stage.draw();
+                }
 
                 if (meetingTimer >= 5f) {
                     showingMeetingResults = false;
                     meetingTimer = 0f;
+
+                    // Asegurar que el chat se cierre al volver al juego
+                    if (votingRenderer.isChatOpen) {
+                        votingRenderer.isChatOpen = false;
+                        Gdx.input.setInputProcessor(null);
+                        if (votingRenderer.stage != null) votingRenderer.stage.unfocusAll();
+                    }
                 }
                 return;
             }
@@ -470,7 +482,7 @@ public class GameScreen implements Screen {
             meetingTimer += delta;
 
             // PASAMOS EL RENDERER AL INPUT HANDLER PARA QUE DETECTE CLICS
-            inputHandler.handleVoteInput(snapshot, meetingTimer, votingRenderer);
+            inputHandler.handleMeetingInput(snapshot, meetingTimer, votingRenderer);
 
             long vivos = snapshot.getPlayers().stream().filter(PlayerView::isAlive).count();
             boolean todosVotaron = engine.getVotedPlayers().size() >= vivos;
@@ -483,14 +495,24 @@ public class GameScreen implements Screen {
             votingRenderer.draw(batch, snapshot, engine.getCurrentReporterId(),
                 meetingTimer, engine.getVotedPlayers(),
                 false, false, engine.isEmergencyMeeting(),
-                inputHandler.getSelectedVoteTarget()); // <--- NUEVO
+                inputHandler.getSelectedVoteTarget(), engine.getChatMessages()); // <--- NUEVO
 
             batch.end();
+
+            if (votingRenderer.isChatOpen && votingRenderer.stage != null) {
+                votingRenderer.stage.act(delta);
+                votingRenderer.stage.draw();
+            }
 
             if (meetingTimer >= 60f || todosVotaron) {
                 wasEmergency = engine.isEmergencyMeeting();
                 java.util.Optional<PlayerId> expulsado = engine.resolveVoting();
                 meetingWasSkipped = expulsado.isEmpty();
+
+                expulsado.ifPresent(id -> {
+                    // Evitar que el cuerpo del expulsado se pueda reportar al volver a la nave
+                    inputHandler.addStaleCorpse(id);
+                });
 
                 if (isHost) {
                     expulsado.ifPresent(id -> {

@@ -50,8 +50,26 @@ public class GameEngine {
     // --- VARIABLES DE REUNIÓN ---
     private PlayerId currentReporterId = null;
     private PlayerId currentVictimId = null;
+    private final java.util.List<com.amongus.core.view.ChatMessage> chatMessages = new java.util.ArrayList<>();
     // --- Sabotaje ---
     private final SabotageManager sabotageManager = new SabotageManager();
+
+    public java.util.List<com.amongus.core.view.ChatMessage> getChatMessages() {
+        return chatMessages;
+    }
+
+    public void addChatMessage(PlayerId senderId, String message) {
+        String senderName = session.getPlayers().stream()
+            .filter(p -> p.getId().equals(senderId))
+            .findFirst()
+            .map(Player::getName)
+            .orElse("Unknown");
+        chatMessages.add(new com.amongus.core.view.ChatMessage(senderId, senderName, message));
+    }
+
+    public void clearChatMessages() {
+        chatMessages.clear();
+    }
 
     public PlayerId getCurrentReporterId() { return currentReporterId; }
     public boolean isEmergencyMeeting() {

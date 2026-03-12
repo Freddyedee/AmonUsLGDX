@@ -46,11 +46,11 @@ public class AmongUsGame extends Game {
             }
 
             System.out.println("[SISTEMA] Iniciando servidor local...");
-            Server server = new Server();
-            server.setDaemon(true);
-            server.start();
+            serverInstancia = new Server();
+            serverInstancia.setDaemon(true);
+            serverInstancia.start();
 
-            try { Thread.sleep(200); } catch (InterruptedException e) { e.printStackTrace(); }
+            // Como el socket se inicia en el constructor de Server, ya podemos conectar de inmediato
             clienteRed.conectar("localhost", 5000);
         } else {
             System.out.println("[SISTEMA] Conectando al host en IP: " + ipHost);

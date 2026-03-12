@@ -16,6 +16,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import com.badlogic.gdx.scenes.scene2d.Stage;
+import com.badlogic.gdx.scenes.scene2d.ui.Skin;
+import com.badlogic.gdx.scenes.scene2d.ui.TextField;
+import com.badlogic.gdx.utils.viewport.FitViewport;
+
 public class VotingRenderer {
     private final Texture imgTablet;
     private final Texture imgSkipButton;
@@ -35,6 +40,16 @@ public class VotingRenderer {
     public Rectangle skipHitbox;
     public Rectangle btnConfirmarHitbox;
     public Rectangle btnRechazarHitbox;
+
+    public boolean isChatOpen = false;
+    public Rectangle btnChatToggleHitbox;
+    public Rectangle btnChatWriteHitbox;
+
+    // Integración de Scene2D para el chat
+    public Stage stage;
+    public Skin skin;
+    public TextField chatField;
+    private String pendingMessage = null;
 
     public VotingRenderer() {
         imgTablet = new Texture(Gdx.files.internal("ui/voting/voting_tablet.png"));
@@ -66,18 +81,66 @@ public class VotingRenderer {
         paramTitle.borderWidth = 3f;
         fontTitle = generator.generateFont(paramTitle);
 
+        // --- CHAT SCENE2D UI ---
+        skin = new Skin(Gdx.files.internal("ui/comic/comic-ui.json"));
+        FreeTypeFontParameter paramChat = new FreeTypeFontParameter();
+        paramChat.size = 50;
+        paramChat.color = Color.DARK_GRAY; // Texto oscuro como en Among Us
+        paramChat.minFilter = TextureFilter.Linear;
+        paramChat.magFilter = TextureFilter.Linear;
+        BitmapFont fontChat = generator.generateFont(paramChat);
+
+        skin.add("font-chat", fontChat, BitmapFont.class);
+        TextField.TextFieldStyle tfStyle = new TextField.TextFieldStyle(skin.get(TextField.TextFieldStyle.class));
+        tfStyle.font = fontChat;
+        tfStyle.fontColor = Color.DARK_GRAY;
+
+        stage = new Stage(new FitViewport(3840, 2160));
+        chatField = new TextField("", tfStyle);
+        chatField.setMessageText("Escribe y presiona ENTER...");
+
+        float chatW = 1600f;
+        float chatH = 1400f;
+        float chatX = (3840f - chatW) / 2f;
+        float chatY = (2160f - chatH) / 2f;
+
+        chatField.setSize(chatW - 80f, 120f);
+        chatField.setPosition(chatX + 40f, chatY + 40f);
+        stage.addActor(chatField);
+
+        chatField.setTextFieldListener(new TextField.TextFieldListener() {
+            @Override
+            public void keyTyped(TextField textField, char c) {
+                if (c == '\r' || c == '\n') {
+                    String text = textField.getText().trim();
+                    if (!text.isEmpty()) {
+                        pendingMessage = text;
+                        textField.setText("");
+                    }
+                }
+            }
+        });
+
         generator.dispose();
+    }
+
+    public String getAndClearPendingMessage() {
+        String msg = pendingMessage;
+        pendingMessage = null;
+        return msg;
     }
 
     public void draw(SpriteBatch batch, GameSnapshot snapshot, PlayerId reporterId,
                      float timer, Set<PlayerId> votedPlayers,
                      boolean showingResults, boolean skipped, boolean isEmergency,
-                     PlayerId selectedPlayerId) {
+                     PlayerId selectedPlayerId, java.util.List<ChatMessage> chatMessages) {
 
         // Limpiamos los hitboxes del frame anterior
         playerHitboxes.clear();
         btnConfirmarHitbox = null;
         btnRechazarHitbox = null;
+        btnChatToggleHitbox = null;
+        btnChatWriteHitbox = null;
 
         float tabletW = 3200f;
         float tabletH = 1800f;
@@ -97,16 +160,16 @@ public class VotingRenderer {
         fontNormal.setColor(Color.WHITE);
         String instruccion;
         if (votedPlayers.contains(snapshot.getLocalPlayerId())) {
-            instruccion = "Ya has votado. Esperando a los demas...";
+            instruccion = "Ya votaste.";
         } else if (timer < 15f) {
-            instruccion = "CONTROLES: Haz click en un jugador para votar (Bloqueado) | Click en Skip (Bloqueado)";
+            instruccion = "Discusion en progreso.";
         } else {
-            instruccion = "CONTROLES: Selecciona a quien expulsar o haz click en Skip Vote";
+            instruccion = "Votacion Abierta.";
         }
-        fontNormal.draw(batch, instruccion, 150, 2100);
+        fontNormal.draw(batch, instruccion, tabletX, tabletY + tabletH + 40f);
 
-        String tiempoInfo = showingResults ? "Reunion Finalizada" : (timer < 15f ? "Tiempo de discusion: " + (int)(15 - timer) + "s" : "Tiempo para votar: " + (int)(60 - timer) + "s");
-        fontNormal.draw(batch, tiempoInfo, 150, 2020);
+        String tiempoInfo = showingResults ? "Reunion Finalizada" : (timer < 15f ? "Discusion: " + (int)(15 - timer) + "s" : "Vota: " + (int)(60 - timer) + "s");
+        fontNormal.draw(batch, tiempoInfo, tabletX + 600f, tabletY + tabletH + 40f);
 
         // --- DIBUJAR JUGADORES ---
         List<PlayerView> players = snapshot.getPlayers();
@@ -204,9 +267,61 @@ public class VotingRenderer {
         if (showingResults && skipped) {
             batch.draw(imgSkippedVoting, (3840f - 1500f) / 2f, (2160f - 800f) / 2f, 1500f, 800f);
         }
-    }
 
-    public void dispose() {
+        // --- BOTON TOGGLE CHAT ---
+        float btnChatW = 200f;
+        float btnChatH = 200f;
+        float btnChatX = tabletX + tabletW - 250f;
+        float btnChatY = tabletY + tabletH - 250f;
+        batch.setColor(Color.LIGHT_GRAY);
+        batch.draw(imgRectangulo, btnChatX, btnChatY, btnChatW, btnChatH);
+        batch.setColor(Color.WHITE);
+        fontNormal.draw(batch, "CHAT", btnChatX + 40f, btnChatY + btnChatH / 2f + 20f);
+        btnChatToggleHitbox = new Rectangle(btnChatX, btnChatY, btnChatW, btnChatH);
+
+        // --- DIBUJAR CHAT (Si está abierto) ---
+        if (isChatOpen) {
+            float chatW = 1600f;
+            float chatH = 1400f;
+            float chatX = (3840f - chatW) / 2f;
+            float chatY = (2160f - chatH) / 2f;
+
+            // Fondo oscuro para atenuar todo lo de atrás y destacar el chat
+            batch.setColor(0f, 0f, 0f, 0.7f);
+            batch.draw(imgRectangulo, 0, 0, 3840f, 2160f);
+
+            // Fondo del chat
+            batch.setColor(0f, 0f, 0f, 0.9f);
+            batch.draw(imgRectangulo, chatX, chatY, chatW, chatH);
+            batch.setColor(Color.WHITE);
+
+            fontNormal.setColor(Color.CYAN);
+            fontNormal.draw(batch, "CHAT DE REUNION", chatX + 40, chatY + chatH - 40);
+
+            // Mostrar los últimos mensajes
+            if (chatMessages != null && !chatMessages.isEmpty()) {
+                float msgY = chatY + chatH - 150;
+                int startIndex = Math.max(0, chatMessages.size() - 15);
+                for (int i = startIndex; i < chatMessages.size(); i++) {
+                    ChatMessage msg = chatMessages.get(i);
+                    String line = msg.getSenderName() + ": " + msg.getText();
+
+                    com.badlogic.gdx.graphics.g2d.GlyphLayout layout = new com.badlogic.gdx.graphics.g2d.GlyphLayout();
+                    layout.setText(fontNormal, line, Color.WHITE, chatW - 80, Align.left, true);
+
+                    fontNormal.draw(batch, line, chatX + 40, msgY, chatW - 80, Align.left, true);
+                    msgY -= (layout.height + 30);
+                }
+            } else {
+                fontNormal.setColor(Color.WHITE);
+                fontNormal.draw(batch, "Sin mensajes.", chatX + 40, chatY + chatH - 150);
+            }
+
+            // El TextField (stage) se dibuja desde GameScreen.java
+        }
+        }
+
+        public void dispose() {
         fontNormal.dispose();
         fontTitle.dispose();
         imgTablet.dispose();
@@ -217,5 +332,6 @@ public class VotingRenderer {
         imgRectangulo.dispose();
         imgConfirmar.dispose();
         imgRechazar.dispose();
-    }
-}
+        if (stage != null) stage.dispose();
+        if (skin != null) skin.dispose();
+        }}

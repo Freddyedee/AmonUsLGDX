@@ -10,6 +10,7 @@ public class PlayerHandler extends Thread{
     private final Server server;
     private DataOutputStream out;
     private DataInputStream in;
+    private String playerId = null;
 
     public PlayerHandler(Socket socket, Server server) {
         this.server = server;
@@ -37,16 +38,29 @@ public class PlayerHandler extends Thread{
         try {
             while (true) {
                 String mensaje = in.readUTF();
+
+                // Extraer el ID del jugador si es el mensaje inicial
+                if (playerId == null) {
+                    String[] partes = mensaje.split(":");
+                    if (partes.length > 1 && (partes[0].equals("JOIN") || partes[0].equals("HERE"))) {
+                        playerId = partes[1];
+                    }
+                }
+
                 server.enviarATodos(mensaje, this);
             }
         } catch (IOException e) {
             System.out.println("Un jugador se ha desconectado.");
         } finally {
-            // MUY IMPORTANTE: Se borra de la lista del servidor
+            // Avisar a los demas que se desconecto para evitar fantasmas
+            if (playerId != null) {
+                server.enviarATodos("QUIT:" + playerId, this);
+            }
+            // Se borra de la lista del servidor
             server.DeleteClient(this);
             try {
-                in.close();
-                out.close();
+                if (in != null) in.close();
+                if (out != null) out.close();
             } catch (IOException ex) {
                 ex.printStackTrace();
             }
