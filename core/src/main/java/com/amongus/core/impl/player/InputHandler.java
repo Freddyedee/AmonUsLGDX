@@ -12,12 +12,15 @@ import com.amongus.core.view.GameSnapshot;
 import com.amongus.core.view.HudRenderer;
 import com.amongus.core.view.PlayerView;
 import com.amongus.core.api.player.Role;
+import com.amongus.core.view.VotingRenderer;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
+import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 public class InputHandler {
@@ -33,6 +36,7 @@ public class InputHandler {
     private static final Position EMERGENCY_MAP1 = new Position(339f, 1240f);
     private static final Position EMERGENCY_MAP2 = new Position(2331f, 1275f);
     private static final float EMERGENCY_RADIUS = 100f;
+    private PlayerId selectedVoteTarget = null;
 
     private float emergencyCooldown = 30f;
     private float freezeTimer = 0f;
@@ -126,7 +130,7 @@ public class InputHandler {
         // ── LÓGICA DE VENTILACIÓN ──
         canVent = false;
         if (me.getRole() == Role.IMPOSTOR) {
-            Position nearest = engine.getNearestVent(me.getPosition(), 50f);
+            Position nearest = engine.getNearestVent(me.getPosition(), 60f);
             canVent = me.isVenting() || nearest != null;
 
             if (me.isVenting()) {
@@ -162,14 +166,14 @@ public class InputHandler {
         }
     }
 
-    public void handleMeetingInput(GameSnapshot snapshot, float meetingTimer) {
+    public void handleMeetingInput(GameSnapshot snapshot, float meetingTimer, VotingRenderer votingRenderer) {
         previousState = snapshot.getState();
         for (PlayerView pv : snapshot.getPlayers()) {
             if (!pv.isAlive()) {
                 staleCorpses.add(pv.getId());
             }
         }
-        handleVoteInput(snapshot, meetingTimer);
+        handleVoteInput(snapshot, meetingTimer, votingRenderer);
     }
 
     private void handleMovement(float delta) {
@@ -312,12 +316,65 @@ public class InputHandler {
         return null;
     }
 
-    private void handleVoteInput(GameSnapshot snapshot, float meetingTimer) {
+    public void handleVoteInput(GameSnapshot snapshot, float meetingTimer, VotingRenderer votingRenderer) {
         if (meetingTimer < 15f) return;
         if (engine.getVotedPlayers().contains(localPlayerId)) return;
 
-        List<PlayerView> votable = snapshot.getPlayers().stream()
-            .filter(PlayerView::isAlive).collect(Collectors.toList());
+        // 1. Mapear el clic del ratón a la resolución 4K interna de la tablet
+        if (Gdx.input.isButtonJustPressed(Input.Buttons.LEFT)) {
+            // Convertimos las coordenadas de la ventana (ej. 1024x768) a las del mundo virtual de la UI (3840x2160)
+            float screenX = Gdx.input.getX();
+            float screenY = Gdx.graphics.getHeight() - Gdx.input.getY(); // Invertir Y
+
+            float scaleX = 3840f / Gdx.graphics.getWidth();
+            float scaleY = 2160f / Gdx.graphics.getHeight();
+
+            float worldX = screenX * scaleX;
+            float worldY = screenY * scaleY;
+
+            // 2. Comprobar si hicimos clic en los botones Confirmar/Rechazar (si hay alguien seleccionado)
+            if (selectedVoteTarget != null) {
+                if (votingRenderer.btnConfirmarHitbox != null && votingRenderer.btnConfirmarHitbox.contains(worldX, worldY)) {
+                    // Si el ID es el "falso", es que le dimos a Skip
+                    if (selectedVoteTarget.value().toString().equals("00000000-0000-0000-0000-000000000000")) {
+                        actionSender.send(new VoteAction(localPlayerId, null));
+                    } else {
+                        actionSender.send(new VoteAction(localPlayerId, selectedVoteTarget));
+                    }
+                    selectedVoteTarget = null; // Limpiar tras votar
+                    return;
+                }
+
+                if (votingRenderer.btnRechazarHitbox != null && votingRenderer.btnRechazarHitbox.contains(worldX, worldY)) {
+                    selectedVoteTarget = null; // Cancelar selección
+                    return;
+                }
+            }
+
+            // 3. Comprobar si hicimos clic en el botón de SKIP VOTE
+            if (votingRenderer.skipHitbox != null && votingRenderer.skipHitbox.contains(worldX, worldY)) {
+                // Usamos un UUID de ceros como "bandera" para identificar el Skip
+                selectedVoteTarget = new PlayerId(java.util.UUID.fromString("00000000-0000-0000-0000-000000000000"));
+                return;
+            }
+
+            // 4. Comprobar si hicimos clic en el recuadro de algún jugador
+            for (Map.Entry<PlayerId, Rectangle> entry : votingRenderer.playerHitboxes.entrySet()) {
+                if (entry.getValue().contains(worldX, worldY)) {
+                    // Si hacemos clic en el mismo, lo deseleccionamos. Si es otro, cambiamos la selección.
+                    if (selectedVoteTarget != null && selectedVoteTarget.equals(entry.getKey())) {
+                        selectedVoteTarget = null;
+                    } else {
+                        selectedVoteTarget = entry.getKey();
+                    }
+                    return;
+                }
+            }
+        }
+
+        // Mantener también el soporte por teclado por si acaso
+        List<com.amongus.core.view.PlayerView> votable = snapshot.getPlayers().stream()
+            .filter(com.amongus.core.view.PlayerView::isAlive).toList();
 
         for (int i = 0; i < votable.size(); i++) {
             if (!Gdx.input.isKeyJustPressed(Input.Keys.NUM_1 + i)) continue;
@@ -328,6 +385,11 @@ public class InputHandler {
         if (Gdx.input.isKeyJustPressed(keySkip)) {
             actionSender.send(new VoteAction(localPlayerId, null));
         }
+    }
+
+    // 👇 Añade este método para que la vista pueda saber quién está seleccionado
+    public PlayerId getSelectedVoteTarget() {
+        return selectedVoteTarget;
     }
 
     public void executeInteraction(GameSnapshot snapshot) {
@@ -378,7 +440,7 @@ public class InputHandler {
         if (me == null || !me.isAlive()) return false;
 
         boolean nearTask = snapshot.getTasks().stream()
-            .anyMatch(tv -> Vector2.dst(me.getPosition().x(), me.getPosition().y(), tv.getPosition().x(), tv.getPosition().y()) <= 70f);
+            .anyMatch(tv -> Vector2.dst(me.getPosition().x(), me.getPosition().y(), tv.getPosition().x(), tv.getPosition().y()) <= 80f);
 
         boolean nearEmergency = isNearEmergencyTable(snapshot);
 

@@ -288,7 +288,17 @@ public class GameScreen implements Screen {
 
                 String nombreMapa = engine.getMapType() == MapType.MAPA_1 ? "Aulas Principal" : "Cancha y Estacionamiento";
                 font.draw(batch, "Mapa actual: " + nombreMapa, 20, Gdx.graphics.getHeight() - 20);
-                font.draw(batch, "ERES EL HOST. PRESIONA [ENTER] O [START] PARA INICIAR", Gdx.graphics.getWidth() / 2f - 250, 50);
+                // Verificamos cuántos somos para mostrar el mensaje correcto
+                int playerCount = snapshot.getPlayers().size();
+                if (playerCount >= 4) {
+                    font.setColor(Color.GREEN);
+                    font.draw(batch, "ERES EL HOST. PRESIONA [ENTER] O [START] PARA INICIAR", Gdx.graphics.getWidth() / 2f - 250, 50);
+                    font.setColor(Color.WHITE);
+                } else {
+                    font.setColor(Color.RED);
+                    font.draw(batch, "FALTAN JUGADORES PARA INICIAR (" + playerCount + "/2)", Gdx.graphics.getWidth() / 2f - 180, 50);
+                    font.setColor(Color.WHITE);
+                }
             } else {
                 String nombreMapa = engine.getMapType() == MapType.MAPA_1 ? "Aulas Principal" : "Cancha y Estacionamiento";
                 font.draw(batch, "Mapa seleccionado por el Host: " + nombreMapa, 20, Gdx.graphics.getHeight() - 20);
@@ -341,7 +351,7 @@ public class GameScreen implements Screen {
                 batch.begin();
                 votingRenderer.draw(batch, snapshot, engine.getCurrentReporterId(),
                     meetingTimer, engine.getVotedPlayers(),
-                    true, meetingWasSkipped, wasEmergency);
+                    true, meetingWasSkipped, wasEmergency, null);
                 batch.end();
 
                 if (meetingTimer >= 5f) {
@@ -458,7 +468,9 @@ public class GameScreen implements Screen {
         } else if (snapshot.getState() == GameState.MEETING) {
 
             meetingTimer += delta;
-            inputHandler.handleMeetingInput(snapshot, meetingTimer);
+
+            // PASAMOS EL RENDERER AL INPUT HANDLER PARA QUE DETECTE CLICS
+            inputHandler.handleVoteInput(snapshot, meetingTimer, votingRenderer);
 
             long vivos = snapshot.getPlayers().stream().filter(PlayerView::isAlive).count();
             boolean todosVotaron = engine.getVotedPlayers().size() >= vivos;
@@ -466,9 +478,13 @@ public class GameScreen implements Screen {
             clear(0.05f, 0.05f, 0.1f, 1);
             batch.getProjectionMatrix().setToOrtho2D(0, 0, 3840, 2160);
             batch.begin();
+
+            // 👇 PASAMOS EL JUGADOR SELECCIONADO PARA QUE DIBUJE LOS BOTONES
             votingRenderer.draw(batch, snapshot, engine.getCurrentReporterId(),
                 meetingTimer, engine.getVotedPlayers(),
-                false, false, engine.isEmergencyMeeting());
+                false, false, engine.isEmergencyMeeting(),
+                inputHandler.getSelectedVoteTarget()); // <--- NUEVO
+
             batch.end();
 
             if (meetingTimer >= 60f || todosVotaron) {

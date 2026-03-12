@@ -9,8 +9,11 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator;
 import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator.FreeTypeFontParameter;
+import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.utils.Align;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public class VotingRenderer {
@@ -21,9 +24,17 @@ public class VotingRenderer {
     private final Texture imgSkippedVoting;
     private final Texture imgRectangulo;
 
-    // Usaremos dos fuentes nítidas en lugar de escalar la de defecto
+    private final Texture imgConfirmar;
+    private final Texture imgRechazar;
+
     private final BitmapFont fontNormal;
     private final BitmapFont fontTitle;
+
+    // MAPAS PARA GUARDAR LAS ZONAS CLICABLES
+    public final Map<PlayerId, Rectangle> playerHitboxes = new HashMap<>();
+    public Rectangle skipHitbox;
+    public Rectangle btnConfirmarHitbox;
+    public Rectangle btnRechazarHitbox;
 
     public VotingRenderer() {
         imgTablet = new Texture(Gdx.files.internal("ui/voting/voting_tablet.png"));
@@ -33,37 +44,41 @@ public class VotingRenderer {
         imgSkippedVoting = new Texture(Gdx.files.internal("ui/voting/SkippedVoting.png"));
         imgRectangulo = new Texture(Gdx.files.internal("ui/voting/RectanguloBlanco.png"));
 
-        // --- GENERACIÓN DE FUENTES FREETYPE DE ALTA CALIDAD ---
-        // Usamos la fuente que ya tenías en el menú. Si quieres otra, solo cambia la ruta del .ttf
+        // 👇 CARGAR TUS NUEVAS TEXTURAS
+        imgConfirmar = new Texture(Gdx.files.internal("ui/voting/Confirmar.png"));
+        imgRechazar = new Texture(Gdx.files.internal("ui/voting/Rechazar.png"));
+
         FreeTypeFontGenerator generator = new FreeTypeFontGenerator(Gdx.files.internal("ui/comic/fuente-bold.ttf"));
 
-        // 1. Fuente Normal (Para nombres e instrucciones)
         FreeTypeFontParameter paramNormal = new FreeTypeFontParameter();
-        paramNormal.size = 60; // Equivalente a tu antiguo scale(3.5f) pero en HD
+        paramNormal.size = 60;
         paramNormal.color = Color.WHITE;
         paramNormal.minFilter = TextureFilter.Linear;
         paramNormal.magFilter = TextureFilter.Linear;
         fontNormal = generator.generateFont(paramNormal);
 
-        // 2. Fuente Título (Gigante para "REUNIÓN DE EMERGENCIA")
         FreeTypeFontParameter paramTitle = new FreeTypeFontParameter();
         paramTitle.size = 110;
         paramTitle.color = Color.WHITE;
         paramTitle.minFilter = TextureFilter.Linear;
         paramTitle.magFilter = TextureFilter.Linear;
-        // Añadimos un borde negro sutil para que resalte más
         paramTitle.borderColor = Color.BLACK;
         paramTitle.borderWidth = 3f;
         fontTitle = generator.generateFont(paramTitle);
 
-        generator.dispose(); // Importante liberar el generador
+        generator.dispose();
     }
 
     public void draw(SpriteBatch batch, GameSnapshot snapshot, PlayerId reporterId,
                      float timer, Set<PlayerId> votedPlayers,
-                     boolean showingResults, boolean skipped, boolean isEmergency) {
+                     boolean showingResults, boolean skipped, boolean isEmergency,
+                     PlayerId selectedPlayerId) {
 
-        // --- FORZAR TAMAÑO 4K PARA LA TABLET ---
+        // Limpiamos los hitboxes del frame anterior
+        playerHitboxes.clear();
+        btnConfirmarHitbox = null;
+        btnRechazarHitbox = null;
+
         float tabletW = 3200f;
         float tabletH = 1800f;
         float tabletX = (3840f - tabletW) / 2f;
@@ -71,11 +86,9 @@ public class VotingRenderer {
 
         batch.draw(imgTablet, tabletX, tabletY, tabletW, tabletH);
 
-        // --- TÍTULO DE LA REUNIÓN (Arriba a la Derecha) ---
+        // --- TÍTULO ---
         fontTitle.setColor(isEmergency ? Color.RED : Color.CYAN);
         String titulo = isEmergency ? "REUNION DE EMERGENCIA" : "CUERPO REPORTADO";
-
-        // Lo alineamos a la derecha, dándole un margen de 150px desde el borde derecho de la tablet
         float titleX = tabletX + tabletW + 20f;
         float titleY = tabletY + tabletH + 100f;
         fontTitle.draw(batch, titulo, titleX, titleY, 0, Align.right, false);
@@ -86,11 +99,10 @@ public class VotingRenderer {
         if (votedPlayers.contains(snapshot.getLocalPlayerId())) {
             instruccion = "Ya has votado. Esperando a los demas...";
         } else if (timer < 15f) {
-            instruccion = "CONTROLES: [1] al [" + snapshot.getPlayers().size() + "] para Votar (Bloqueado)  |  [S] para Skip (Bloqueado)";
+            instruccion = "CONTROLES: Haz click en un jugador para votar (Bloqueado) | Click en Skip (Bloqueado)";
         } else {
-            instruccion = "CONTROLES: Teclas [1] al [" + snapshot.getPlayers().size() + "] para Votar  |  Tecla [S] para Skip";
+            instruccion = "CONTROLES: Selecciona a quien expulsar o haz click en Skip Vote";
         }
-
         fontNormal.draw(batch, instruccion, 150, 2100);
 
         String tiempoInfo = showingResults ? "Reunion Finalizada" : (timer < 15f ? "Tiempo de discusion: " + (int)(15 - timer) + "s" : "Tiempo para votar: " + (int)(60 - timer) + "s");
@@ -98,12 +110,10 @@ public class VotingRenderer {
 
         // --- DIBUJAR JUGADORES ---
         List<PlayerView> players = snapshot.getPlayers();
-
         float rectW = 1200f;
         float rectH = 180f;
         float paddingX = 150f;
         float paddingY = 60f;
-
         float startX = tabletX + 250f;
         float startY = tabletY + tabletH - 350f;
 
@@ -111,36 +121,84 @@ public class VotingRenderer {
             PlayerView pv = players.get(i);
             int col = i % 2;
             int row = i / 2;
-
             float x = startX + col * (rectW + paddingX);
             float y = startY - row * (rectH + paddingY);
 
-            // 1. Rectángulo Blanco
-            batch.setColor(pv.isAlive() ? Color.WHITE : Color.LIGHT_GRAY);
+            // Guardamos la zona clicable
+            if (pv.isAlive()) {
+                playerHitboxes.put(pv.getId(), new Rectangle(x, y, rectW, rectH));
+            }
+
+            // Si está seleccionado, oscurecemos un poco el fondo
+            boolean isSelected = pv.getId().equals(selectedPlayerId);
+            if (pv.isAlive()) {
+                batch.setColor(isSelected ? Color.GRAY : Color.WHITE);
+            } else {
+                batch.setColor(Color.DARK_GRAY);
+            }
             batch.draw(imgRectangulo, x, y, rectW, rectH);
             batch.setColor(Color.WHITE);
 
-            // 2. Megáfono
+            // Megáfono
             if (pv.getId().equals(reporterId)) {
                 batch.draw(imgMegafono, x - 60, y + 30, 120, 120);
             }
 
-            // 3. Escribir el Nombre
-            // Si está vivo, negro. Si está muerto, un rojo oscuro para que se note la baja.
+            // Nombre
             fontNormal.setColor(pv.isAlive() ? Color.BLACK : new Color(0.5f, 0f, 0f, 1f));
             String text = (i + 1) + ". " + pv.getName() + (pv.getId().equals(snapshot.getLocalPlayerId()) ? " (Tu)" : "");
-            if(!pv.isAlive()) text += " [INHABILITADO]"; // Un recordatorio extra
+            if(!pv.isAlive()) text += " [INHABILITADO]";
             fontNormal.draw(batch, text, x + 80, y + rectH / 2f + 20, rectW - 100, Align.left, false);
 
-            // 4. I Voted
+            // I Voted
             if (votedPlayers.contains(pv.getId())) {
                 batch.draw(imgIVoted, x + rectW - 150, y + 30, 120, 120);
+            }
+
+            // 👇 DIBUJAR BOTONES DE CONFIRMAR/RECHAZAR SI ESTÁ SELECCIONADO
+            if (isSelected && timer >= 15f && !votedPlayers.contains(snapshot.getLocalPlayerId())) {
+                float btnSize = 120f;
+                float btnY = y + (rectH - btnSize) / 2f; // Centrado verticalmente
+
+                // Botón verde (Confirmar) a la derecha
+                float confirmarX = x + rectW - btnSize - 20f;
+                batch.draw(imgConfirmar, confirmarX, btnY, btnSize, btnSize);
+                btnConfirmarHitbox = new Rectangle(confirmarX, btnY, btnSize, btnSize);
+
+                // Botón rojo (Rechazar) un poco más a la izquierda
+                float rechazarX = confirmarX - btnSize - 20f;
+                batch.draw(imgRechazar, rechazarX, btnY, btnSize, btnSize);
+                btnRechazarHitbox = new Rectangle(rechazarX, btnY, btnSize, btnSize);
             }
         }
 
         // --- BOTÓN SKIP ---
+        float skipX = tabletX + tabletW - 950;
+        float skipY = tabletY + 120;
+        float skipW = 600;
+        float skipH = 200;
+
+        // Efecto visual si está "seleccionado" (opcional)
+        boolean isSkipSelected = selectedPlayerId != null && selectedPlayerId.value().toString().equals("00000000-0000-0000-0000-000000000000"); // Usaremos este ID falso para representar el Skip
+        batch.setColor(isSkipSelected ? Color.GRAY : Color.WHITE);
+        batch.draw(imgSkipButton, skipX, skipY, skipW, skipH);
         batch.setColor(Color.WHITE);
-        batch.draw(imgSkipButton, tabletX + tabletW - 950, tabletY + 120, 600, 200);
+
+        skipHitbox = new Rectangle(skipX, skipY, skipW, skipH);
+
+        // Si el Skip está seleccionado, le ponemos los botones encima
+        if (isSkipSelected && timer >= 15f && !votedPlayers.contains(snapshot.getLocalPlayerId())) {
+            float btnSize = 100f;
+            float btnY = skipY + (skipH - btnSize) / 2f;
+
+            float confirmarX = skipX + skipW - btnSize - 10f;
+            batch.draw(imgConfirmar, confirmarX, btnY, btnSize, btnSize);
+            btnConfirmarHitbox = new Rectangle(confirmarX, btnY, btnSize, btnSize);
+
+            float rechazarX = confirmarX - btnSize - 10f;
+            batch.draw(imgRechazar, rechazarX, btnY, btnSize, btnSize);
+            btnRechazarHitbox = new Rectangle(rechazarX, btnY, btnSize, btnSize);
+        }
 
         // --- PANTALLA DE RESULTADOS ---
         if (showingResults && skipped) {
@@ -157,5 +215,7 @@ public class VotingRenderer {
         imgMegafono.dispose();
         imgSkippedVoting.dispose();
         imgRectangulo.dispose();
+        imgConfirmar.dispose();
+        imgRechazar.dispose();
     }
 }

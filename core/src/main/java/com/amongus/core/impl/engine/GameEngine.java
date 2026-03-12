@@ -211,6 +211,12 @@ public class GameEngine {
 
     public void startGameHost(GameClient client) {
         java.util.List<Player> players = new java.util.ArrayList<>(session.getPlayers());
+
+        if (!GameRules.canStartGame(players)) {
+            System.out.println("[ENGINE] No se puede iniciar: Se requieren al menos 4 jugadores.");
+            return; // Cortamos la ejecución, la partida no inicia
+        }
+
         PlayerId impostorId = players.get(new java.util.Random().nextInt(players.size())).getId();
 
         Position spawnPoint = getSpawnPositionForMap();
