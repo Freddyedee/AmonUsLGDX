@@ -18,12 +18,14 @@ import com.amongus.core.view.screens.MainMenuScreen;
 import com.amongus.debug.DebugConfig;
 import com.amongus.debug.DebugEndGame;
 import com.amongus.debug.DebugRenderer;
+import com.amongus.debug.DebugWinCondAction;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.*;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Matrix4;
@@ -44,6 +46,7 @@ public class GameScreen implements Screen {
     private OrthographicCamera camera;
     private PlayerRenderer playerRenderer;
     private BitmapFont font;
+    private ActionSender actionSender;
 
     private Texture mapa;
     private Texture mapaLobby;
@@ -54,6 +57,7 @@ public class GameScreen implements Screen {
     private InputHandler inputHandler;
     private HudRenderer hudRenderer;
     private VotingRenderer votingRenderer;
+    private IntroOverlay introOverlay;
     private DebugRenderer debugRenderer;
     private DebugEndGame debugEndGame;
     private boolean showDebug = false;
@@ -74,7 +78,7 @@ public class GameScreen implements Screen {
     private boolean meetingWasSkipped = false;
     private boolean wasEmergency = false;
 
-    // --- VARIABLES DE TAREAS (De Eliuber) ---
+    // --- VARIABLES DE TAREAS ---
     private ShapeRenderer shapeRenderer;
     private final java.util.Map<String, Texture> taskSprites = new java.util.HashMap<>();
     private TaskArrowRenderer taskArrowRenderer;
@@ -114,6 +118,22 @@ public class GameScreen implements Screen {
         imgBtnQuit = new Texture(Gdx.files.internal("hud/Salir.png"));
         visionMask = new Texture(Gdx.files.internal("sprites/vision_mask.png"));
 
+        // --- INICIALIZAR FUENTE FREETYPE PARA EL OVERLAY ---
+        FreeTypeFontGenerator generator =
+            new FreeTypeFontGenerator(Gdx.files.internal("ui/comic/fuente-regular.ttf"));
+        FreeTypeFontGenerator.FreeTypeFontParameter parameter =
+            new FreeTypeFontGenerator.FreeTypeFontParameter();
+
+        parameter.size = 72; // Tamaño base grande para que no se pixele
+        parameter.color = Color.WHITE;
+        parameter.minFilter = Texture.TextureFilter.Linear;
+        parameter.magFilter = Texture.TextureFilter.Linear;
+
+        BitmapFont introFont = generator.generateFont(parameter);
+        generator.dispose(); // IMPORTANTE: Liberar el generador de memoria
+
+        this.introOverlay = new IntroOverlay(batch, introFont);
+
         // Inicializar Tareas
         shapeRenderer = new ShapeRenderer();
         taskArrowRenderer = new TaskArrowRenderer();
@@ -131,8 +151,8 @@ public class GameScreen implements Screen {
         mapa = new Texture(engine.getMapType().getVisualPath());
         mapaLobby = new Texture("mapas/SalaEspera.png");
 
-        ActionSender sender = new NetworkActionSender(engine, clienteRed);
-        inputHandler = new InputHandler(sender, engine, myPlayerId);
+        actionSender = new NetworkActionSender(engine, clienteRed);
+        inputHandler = new InputHandler(actionSender, engine, myPlayerId);
 
         // --- INICIALIZAR SABOTAJE ---
         sabotageMapOverlay = new SabotageMapOverlay();
@@ -144,7 +164,7 @@ public class GameScreen implements Screen {
 
         sabotageMapOverlay.setSelectListener((type, btnIndex) -> {
             // Cuando el impostor hace click en el mapa de sabotaje
-            sender.send(new SabotageAction(myPlayerId, type));
+            actionSender.send(new SabotageAction(myPlayerId, type));
         });
 
         sabotageButtonTexture = new Texture(Gdx.files.internal("hud/Sabotaje.png"));
@@ -171,8 +191,13 @@ public class GameScreen implements Screen {
     @Override
     public void render(float delta) {
         GameSnapshot snapshot = engine.getSnapshot();
-        // Luces
-        if (lightsSabotaged) {
+
+        // Obtenemos al jugador local para revisar su rol
+        PlayerView me = findLocalPlayer(snapshot);
+        boolean isImpostor = (me != null && me.getRole() == Role.IMPOSTOR);
+
+        // Luces: Si hay sabotaje y NO eres impostor, se oscurece.
+        if (lightsSabotaged && !isImpostor) {
             darknessAlpha = Math.min(1f, darknessAlpha + delta * 2f); // Oscurece en 0.5s
         } else {
             darknessAlpha = Math.max(0f, darknessAlpha - delta * 4f); // Aclara más rápido
@@ -180,8 +205,10 @@ public class GameScreen implements Screen {
 
         //* ── ATAJOS DE DEBUG (Solo para desarrollo) ──
         if (Gdx.input.isKeyJustPressed(Input.Keys.F1)) {
-            DebugConfig.IGNORE_WIN_CONDITIONS = !DebugConfig.IGNORE_WIN_CONDITIONS;
-            System.out.println("[DEBUG] Ignorar Victorias: " + DebugConfig.IGNORE_WIN_CONDITIONS);
+            // Enviamos el valor INVERSO al actual para alternarlo (Toggle)
+            boolean newState = !DebugConfig.IGNORE_WIN_CONDITIONS;
+            actionSender.send(new DebugWinCondAction(myPlayerId, newState));
+            System.out.println("[DEBUG] Ignorar Victorias: " + newState);
         }
 
         if (Gdx.input.isKeyJustPressed(Input.Keys.F2)) {
@@ -190,6 +217,9 @@ public class GameScreen implements Screen {
         }
         //*/
         if (engine.getGameResult() != null) {
+            if (engine.getActiveMinigame() != null) {
+                engine.setActiveMinigame(null);
+            }
             renderEndGame();
             return;
         }
@@ -203,7 +233,6 @@ public class GameScreen implements Screen {
             }
             return;
         }
-
         // Solo permitimos abrir el menú si estamos en el LOBBY
         if (snapshot.getState() == GameState.LOBBY) {
             if (hudRenderer.isConfigurationClicked() || Gdx.input.isKeyJustPressed(keyEscape)) {
@@ -213,7 +242,6 @@ public class GameScreen implements Screen {
             // Si no estamos en el lobby, forzamos a que el menú esté cerrado
             isMenuOpen = false;
         }
-
         if (isMenuOpen) {
             clear(0, 0, 0, 1);
             renderGameplay(snapshot);
@@ -243,11 +271,11 @@ public class GameScreen implements Screen {
             batch.getProjectionMatrix().setToOrtho2D(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
 
             boolean canUseConsole = false;
-            PlayerView me = findLocalPlayer(snapshot);
+            me = findLocalPlayer(snapshot);
             batch.begin();
             if (isHost) {
                 if (me != null) {
-                    float dist = com.badlogic.gdx.math.Vector2.dst(me.getPosition().x(), me.getPosition().y(), CONSOLE_X, CONSOLE_Y);
+                    float dist = Vector2.dst(me.getPosition().x(), me.getPosition().y(), CONSOLE_X, CONSOLE_Y);
 
                     // Si estamos cerca, habilitamos el botón de usar
                     if (dist <= CONSOLE_RADIUS) {
@@ -307,6 +335,7 @@ public class GameScreen implements Screen {
                 meetingTimer += delta;
                 clear(0, 0, 0, 1);
                 renderGameplay(snapshot);
+                renderProgressBar(snapshot);
 
                 batch.getProjectionMatrix().setToOrtho2D(0, 0, 3840, 2160);
                 batch.begin();
@@ -326,7 +355,7 @@ public class GameScreen implements Screen {
             engine.getSabotageManager().update(delta);
             snapshot = engine.getSnapshot();
 
-            PlayerView me = findLocalPlayer(snapshot);
+            me = findLocalPlayer(snapshot);
             boolean isAlive = me != null && me.isAlive();
 
             PlayerView nearbyCorpse = null;
@@ -415,6 +444,9 @@ public class GameScreen implements Screen {
                 font.draw(batch, "[ ESPACIO / FLECHAS ] para cambiar de camara", 20, Gdx.graphics.getHeight() - 40);
                 batch.end();
             }
+
+            //  Dibujar el Overlay de Introducción por encima de TODO el HUD
+            introOverlay.render(snapshot, inputHandler.getFreezeTimer());
 
             if (showDebugEndGame) {
                 batch.begin();
@@ -693,6 +725,10 @@ public class GameScreen implements Screen {
         batch.end();
 
         batch.setProjectionMatrix(camera.combined);
+        // Añade esto solo para probar:
+        if (Gdx.input.isKeyJustPressed(Input.Keys.F3)) {
+            System.out.println("[DEBUG HUD] Tareas: " + snapshot.getCompletedTasks() + "/" + snapshot.getTotalTasks());
+        }
     }
 
     private void renderMenu() {
@@ -872,17 +908,34 @@ public class GameScreen implements Screen {
 
     // ── Helpers de Sabotaje ──
     private void renderSabotageHUD() {
-        com.amongus.core.impl.sabotage.SabotageManager sm = engine.getSabotageManager();
+        SabotageManager sm = engine.getSabotageManager();
         boolean canSab = sm.canSabotage();
+
+        // Definir y aplicar tanaño
+        float newSabSize = 120f; // Aumentado de 80f para coincidir con el tamaño de "KILL"
+
+        // Actualizamos el rectángulo con las nuevas dimensiones y la posición de anclaje dinámica
+        sabotageButtonRect.width = newSabSize;
+        sabotageButtonRect.height = newSabSize;
+        // Ajustamos la X para un botón más grande, manteniendo el anclaje a la derecha
+        sabotageButtonRect.x = Gdx.graphics.getWidth() - 140f; // Ajustado para un botón más grande
+        sabotageButtonRect.y = 200f; // Alineación vertical
 
         batch.getProjectionMatrix().setToOrtho2D(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
         batch.begin();
+        // Aplicar el color base (normal o desaturado si está en cooldown)
         batch.setColor(canSab ? 1f : 0.5f, canSab ? 1f : 0.5f, canSab ? 1f : 0.5f, 1f);
-        batch.draw(sabotageButtonTexture, sabotageButtonRect.x, sabotageButtonRect.y, sabotageButtonRect.width, sabotageButtonRect.height);
-        batch.setColor(1f, 1f, 1f, 1f);
 
+        // Ahora dibujamos usando el rectángulo actualizado con el nuevo tamaño
+        batch.draw(sabotageButtonTexture, sabotageButtonRect.x, sabotageButtonRect.y, sabotageButtonRect.width, sabotageButtonRect.height);
+
+        // Restaurar el color a blanco puro para el cooldown
+        batch.setColor(Color.WHITE);
+
+        // Dibujar el temporizador de cooldown si está activo
         if (!canSab && sm.getCooldownRemaining() > 0f) {
             font.setColor(Color.RED);
+            // El posicionamiento ya usa las dimensiones actualizadas, por lo que se centrará automáticamente
             font.draw(batch, String.format("%.0f", sm.getCooldownRemaining()), sabotageButtonRect.x + sabotageButtonRect.width / 2f - 8f, sabotageButtonRect.y + sabotageButtonRect.height + 18f);
             font.setColor(Color.WHITE);
         }

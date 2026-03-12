@@ -10,7 +10,7 @@ public class Lwjgl3Launcher {
         config.setTitle("AmongUs - UNEG");
         config.setWindowedMode(800, 600);
         config.setForegroundFPS(60);
-        config.setWindowIcon("libgdx128.png");
+        config.setWindowIcon("AmongUsUneg.jpeg");
         config.useVsync(true);
 
         new Lwjgl3Application(new AmongUsGame(), config);

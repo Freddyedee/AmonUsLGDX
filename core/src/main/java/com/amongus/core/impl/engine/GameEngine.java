@@ -16,6 +16,7 @@ import com.amongus.core.api.session.TaskProgressTracker;
 import com.amongus.core.api.state.GameState;
 import com.amongus.core.api.task.Task;
 import com.amongus.core.api.task.TaskId;
+import com.amongus.core.api.task.TaskType;
 import com.amongus.core.impl.event.EventBusImpl;
 import com.amongus.core.impl.map.MaskCollisionMap;
 import com.amongus.core.impl.network.GameClient;
@@ -73,9 +74,6 @@ public class GameEngine {
 
         // Escuchamos eventos clave para evaluar si el juego terminó
         this.eventBus.subscribe(KillAttemptedEvent.class, event -> {
-            checkWinConditions();
-        });
-        this.eventBus.subscribe(TaskCompletedEvent.class, event -> {
             checkWinConditions();
         });
     }
@@ -149,6 +147,12 @@ public class GameEngine {
     /* ===================== CASOS DE USO ===================== */
 
     public PlayerId spawnPlayer(String name, SkinColor preferredColor) {
+        // Solo permitir ingresos en el Lobby
+        if (session.getCurrentState() != GameState.LOBBY) {
+            System.out.println("[ENGINE] Conexión rechazada: La partida ya ha comenzado.");
+            return null;
+        }
+
         PlayerId newId = new PlayerId(java.util.UUID.randomUUID());
         SkinColor assignedColor = colorAssigner.assign(preferredColor);
         Player player = new PlayerImpl(newId, name, assignedColor);
@@ -159,6 +163,12 @@ public class GameEngine {
     }
 
     public PlayerId spawnPlayerWithId(String uuidStr, String name, SkinColor networkColor) {
+        // Solo permitir ingresos en el Lobby
+        if (session.getCurrentState() != GameState.LOBBY) {
+            System.out.println("[ENGINE] Conexión rechazada: La partida ya ha comenzado.");
+            return null;
+        }
+
         PlayerId newId = new PlayerId(java.util.UUID.fromString(uuidStr));
         SkinColor assignedColor = colorAssigner.assignForce(networkColor);
         Player player = new PlayerImpl(newId, name, assignedColor);
@@ -212,6 +222,10 @@ public class GameEngine {
             setPlayerMoving(p.getId(), false, 1);
         }
 
+        if (sabotageManager != null) {
+            sabotageManager.reset();
+        }
+
         transitionToGameMap();
         session.startGame();
 
@@ -230,6 +244,11 @@ public class GameEngine {
             forceMovePlayer(p.getId(), spawnPoint);
             setPlayerMoving(p.getId(), false, 1);
         }
+
+        if (sabotageManager != null) {
+            sabotageManager.reset();
+        }
+
         transitionToGameMap();
         session.startGame();
     }

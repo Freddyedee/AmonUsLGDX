@@ -16,7 +16,7 @@ public class SabotageManager {
 
     private SabotageType activeSabotage = SabotageType.NONE;
     private float        cooldownTimer  = 0f;
-    private static final float COOLDOWN = 10f;
+    private static final float COOLDOWN = 20f;
 
     // Listener para que GameScreen reaccione
     public interface SabotageListener {
@@ -81,6 +81,12 @@ public class SabotageManager {
         if (listener != null && oldSabotage != SabotageType.NONE) {
             listener.onSabotageResolved(oldSabotage);
         }
+    }
+
+    public void forceActivateSabotage(SabotageType type) {
+        activeSabotage = type;
+        System.out.println("[Sabotage] Sabotaje forzado (Red): " + type);
+        if (listener != null) listener.onSabotageActivated(type);
     }
 
     /** ¿El sabotaje de internet está activo? */

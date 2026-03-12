@@ -2,12 +2,15 @@ package com.amongus.core.impl.actions;
 
 import com.amongus.core.api.actions.ActionSender;
 import com.amongus.core.api.actions.GameAction;
+import com.amongus.core.api.events.TaskCompletedEvent;
 import com.amongus.core.api.player.PlayerId;
 import com.amongus.core.impl.engine.GameEngine;
 import com.amongus.core.impl.network.GameClient;
 import com.amongus.core.impl.session.GameSessionImpl;
 import com.amongus.core.impl.voting.VoteImpl;
 import com.amongus.core.view.PlayerView;
+import com.amongus.debug.DebugConfig;
+import com.amongus.debug.DebugWinCondAction;
 
 import static com.amongus.core.api.actions.ActionType.CHANGE_COLOR;
 
@@ -30,12 +33,12 @@ public class NetworkActionSender implements ActionSender {
             case VOTE   -> engine.castVote(new VoteImpl(action.getPlayerId(), ((VoteAction) action).getTargetId()));
             case VENT -> engine.processVentAction(action.getPlayerId(), ((VentAction)action).getTargetVent(), ((VentAction)action).isExiting());
             case CHANGE_COLOR -> engine.changePlayerColor(action.getPlayerId(), ((ChangeColorAction) action).getNewColor());
-            case TASK -> engine.notifyTaskCompletedByNetwork(action.getPlayerId(), ((TaskAction) action).getTaskId());
             case SABOTAGE -> {
                 SabotageAction sa = (SabotageAction) action;
-                engine.getSabotageManager().activateSabotage(sa.getSabotageType());
+                engine.getSabotageManager().forceActivateSabotage(sa.getSabotageType());
                 engine.activateSabotageTask(sa.getSabotageType());
             }
+            case DEBUG_WIN_COND -> DebugConfig.IGNORE_WIN_CONDITIONS = ((DebugWinCondAction) action).isIgnoreWins();
         }
 
         // 2. Envío por Red
@@ -76,13 +79,13 @@ public class NetworkActionSender implements ActionSender {
                     ChangeColorAction ca = (ChangeColorAction) action;
                     client.enviarMensaje("COLOR:" + ca.getPlayerId().value() + ":" + ca.getNewColor().name());
                 }
-                case TASK -> {
-                    TaskAction ta = (TaskAction) action;
-                    client.enviarMensaje("TASK:" + ta.getPlayerId().value() + ":" + ta.getTaskId().value());
-                }
                 case SABOTAGE -> {
                     SabotageAction sa = (SabotageAction) action;
                     client.enviarMensaje("SABOTAGE:" + sa.getPlayerId().value() + ":" + sa.getSabotageType().name());
+                }
+                case DEBUG_WIN_COND -> {
+                    DebugWinCondAction dwa = (DebugWinCondAction) action;
+                    client.enviarMensaje("DEBUG_WIN_COND:" + dwa.isIgnoreWins());
                 }
             }
         }

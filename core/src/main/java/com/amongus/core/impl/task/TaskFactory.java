@@ -19,9 +19,15 @@ public class TaskFactory {
         this.engine = engine;
     }
 
+    // Helper para generar el ID determinista
+    private TaskId createId(String name, Position loc) {
+        // Usamos solo el nombre para asegurar 100% de coincidencia en red
+        return TaskId.generate(name);
+    }
+
     public Task createNumberTask(Position location) {
         return new SimpleNumberTask(
-            TaskId.random(),                        // ← generamos el ID aquí
+            createId("NumberTask", location), // ← Ya no es random
             location,
             new NumberCodeMinigameProvider(engine)
         );
@@ -29,7 +35,7 @@ public class TaskFactory {
 
     public Task createBotellonTask(Position location) {
         return new BotellonTask(
-            TaskId.random(),
+            createId("BotellonTask", location),
             location,
             new BotellonMinigameProvider(engine)
         );
@@ -37,42 +43,22 @@ public class TaskFactory {
 
     public Task createWiresTask(Position location) {
         return new WiresTask(
-            TaskId.random(),
+            createId("WiresTask", location),
             location,
             new WiresMinigameProvider(engine)
         );
     }
 
-    /**
-     * Crea las dos partes de la tarea de gasolina.
-     * Ambas comparten el mismo GasolineTaskGroup.
-     * @param locationPart1 posición donde se llena el bidón
-     * @param locationPart2 posición de la estación de recarga
-     * @return lista con [part1, part2] — añadir ambas al pool de tareas
-     */
     public List<Task> createGasolineTask(Position locationPart1, Position locationPart2) {
         GasolineTaskGroup group = new GasolineTaskGroup();
-
-        Task part1 = new GasolineTaskPart1(
-            TaskId.random(),
-            locationPart1,
-            new GasolinePart1MinigameProvider(engine, group),
-            group
-        );
-
-        Task part2 = new GasolineTaskPart2(
-            TaskId.random(),
-            locationPart2,
-            new GasolinePart2MinigameProvider(engine),
-            group
-        );
-
+        Task part1 = new GasolineTaskPart1(createId("Gasoline1", locationPart1), locationPart1, new GasolinePart1MinigameProvider(engine, group), group);
+        Task part2 = new GasolineTaskPart2(createId("Gasoline2", locationPart2), locationPart2, new GasolinePart2MinigameProvider(engine), group);
         return List.of(part1, part2);
     }
 
     public Task createWhiteBoardTask(Position location) {
         return new WhiteBoardTask(
-            TaskId.random(),
+            createId("WhiteBoard", location),
             location,
             new WhiteBoardMinigameProvider(engine)
         );
@@ -80,21 +66,14 @@ public class TaskFactory {
 
     public List<Task> createTrashTask(Position locationPart1, Position locationPart2) {
         TrashTaskGroup group = new TrashTaskGroup();
-
-        Task part1 = new TrashTaskPart1(
-            TaskId.random(), locationPart1,
-            new TrashPart1MinigameProvider(engine, group), group
-        );
-        Task part2 = new TrashTaskPart2(
-            TaskId.random(), locationPart2,
-            new TrashPart2MinigameProvider(engine), group
-        );
+        Task part1 = new TrashTaskPart1(createId("Trash1", locationPart1), locationPart1, new TrashPart1MinigameProvider(engine, group), group);
+        Task part2 = new TrashTaskPart2(createId("Trash2", locationPart2), locationPart2, new TrashPart2MinigameProvider(engine), group);
         return List.of(part1, part2);
     }
 
     public Task createBasketTask(Position location) {
         return new BasketTask(
-            TaskId.random(),
+            createId("BasketTask", location),
             location,
             new BasketMinigameProvider(engine)
         );
@@ -102,7 +81,7 @@ public class TaskFactory {
 
     public Task createToiletTask(Position location) {
         return new ToiletTask(
-            TaskId.random(),
+            createId("ToiletTask", location),
             location,
             new ToiletMinigameProvider(engine)
         );
@@ -110,7 +89,7 @@ public class TaskFactory {
 
     public Task createLibraryTask(Position location) {
         return new LibraryTask(
-            TaskId.random(),
+            createId("LibraryTask", location),
             location,
             new LibraryMinigameProvider(engine)
         );

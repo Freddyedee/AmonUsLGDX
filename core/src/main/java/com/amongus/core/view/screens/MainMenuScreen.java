@@ -34,7 +34,7 @@ public class MainMenuScreen implements Screen {
 
         // 1. Agregar la imagen de fondo al fondo del Stage
         bgTexture = new Texture(Gdx.files.internal("ui/Imagen_Menu.png")); // Ruta del fondo de pantalla
-        Image bgImage = new com.badlogic.gdx.scenes.scene2d.ui.Image(bgTexture);
+        Image bgImage = new Image(bgTexture);
         bgImage.setSize(1280, 720);
         stage.addActor(bgImage); // Se añade de primero para que quede atrás
 

@@ -13,7 +13,10 @@ import com.amongus.core.api.session.TaskProgressTracker;
 import com.amongus.core.api.state.GameState;
 import com.amongus.core.api.task.Task;
 import com.amongus.core.api.task.TaskId;
+import com.amongus.core.api.task.TaskType;
 import com.amongus.core.impl.engine.GameEngine;
+import com.amongus.core.impl.minigame.providers.FixLightsMinigameProvider;
+import com.amongus.core.impl.minigame.providers.InternetSabotageMinigameProvider;
 import com.amongus.core.impl.player.PlayerImpl;
 import com.amongus.core.impl.sabotage.SabotageManager;
 import com.amongus.core.impl.state.GameStateMachine;
@@ -68,24 +71,38 @@ public class GameSessionImpl implements GameSession {
         eventBus.subscribe(TaskCompletedEvent.class, event -> {
             PlayerId pid = event.getPlayerId();
             TaskId   tid = event.getTaskId();
+            String idStr = tid.value().toString();
 
-            assignedTaskIdsByPlayer.getOrDefault(pid, new HashSet<>()).remove(tid);
-            completedTaskIdsByPlayer.computeIfAbsent(pid, k -> new HashSet<>()).add(tid);
+            // Ignorar duplicados para no inflar barra
+            Set<TaskId> alreadyCompleted = completedTaskIdsByPlayer.computeIfAbsent(pid, k -> new HashSet<>());
+            if (alreadyCompleted.contains(tid)) return;
 
-            Task task = allTasks.get(tid);
+            // 1. ¿ES UN SABOTAJE? (Buscamos por ID estático)
+            if (idStr.equals("11111111-1111-1111-1111-111111111111") ||
+                idStr.equals("22222222-2222-2222-2222-222222222222")) {
 
-            if (task != null && task.getTaskType() == com.amongus.core.api.task.TaskType.SABOTAGE) {
                 engine.getSabotageManager().resolveSabotage();
-                return; // Cortamos aquí para que no sume a la barra verde
+                System.out.println("[RED] Sabotaje resuelto por evento.");
+                alreadyCompleted.add(tid);
+                engine.checkWinConditions();
+                return;
             }
 
-            // SOLO AVANZA LA BARRA SI EL JUGADOR ES TRIPULANTE
+            // 2. ¿ES UNA TAREA NORMAL?
+            Task task = allTasks.get(tid);
             Player player = players.get(pid);
-            if (player != null && player.getRole() == Role.CREWMATE && progressTracker != null) {
+
+            // Verificamos si suma progreso (Si task es null, significa que viene de la RED, así que asumimos que sí cuenta)
+            boolean counts = (task == null) || task.countsForProgress();
+
+            // Solo sumamos si el jugador es TRIPULANTE (Evita que el impostor suba la barra)
+            if (progressTracker != null && player != null && player.getRole() == Role.CREWMATE && counts) {
                 progressTracker.taskCompleted();
-                System.out.println("[progreso] pendientes: " + progressTracker.getPending()
-                    + "/" + progressTracker.getTotal());
+                System.out.println("[RED/LOCAL] Tarea sumada al HUD. Tarea ID: " + tid.value());
             }
+
+            alreadyCompleted.add(tid);
+            engine.checkWinConditions();
         });
     }
 
@@ -122,21 +139,21 @@ public class GameSessionImpl implements GameSession {
         if (currentMap == MapType.MAPA_1) {
             // Mapa 1: Internet cerca de Librería, Luces cerca del cuarto eléctrico (Cables)
             internetSabotageTask = new InternetSabotageTask(
-                new TaskId(java.util.UUID.randomUUID()), new Position(2203f, 1740f),
-                new com.amongus.core.impl.minigame.providers.InternetSabotageMinigameProvider(engine, engine.getSabotageManager()));
+                new TaskId(java.util.UUID.fromString("11111111-1111-1111-1111-111111111111")), new Position(2354f, 1872f),
+                new InternetSabotageMinigameProvider(engine, engine.getSabotageManager()));
 
             fixLightsSabotageTask = new FixLightsSabotageTask(
-                new TaskId(java.util.UUID.randomUUID()), new Position(763f, 107f),
-                new com.amongus.core.impl.minigame.providers.FixLightsMinigameProvider(engine, engine.getSabotageManager()));
+                new TaskId(java.util.UUID.fromString("22222222-2222-2222-2222-222222222222")), new Position(763f, 107f),
+                new FixLightsMinigameProvider(engine, engine.getSabotageManager()));
         } else {
             // Mapa 2: Internet cerca de Etapa en Proyecto, Luces cerca de Cables
             internetSabotageTask = new InternetSabotageTask(
-                new TaskId(java.util.UUID.randomUUID()), new Position(1560f, 510f),
-                new com.amongus.core.impl.minigame.providers.InternetSabotageMinigameProvider(engine, engine.getSabotageManager()));
+                new TaskId(java.util.UUID.fromString("11111111-1111-1111-1111-111111111111")), new Position(1560f, 510f),
+                new InternetSabotageMinigameProvider(engine, engine.getSabotageManager()));
 
             fixLightsSabotageTask = new FixLightsSabotageTask(
-                new TaskId(java.util.UUID.randomUUID()), new Position(179f, 1420f),
-                new com.amongus.core.impl.minigame.providers.FixLightsMinigameProvider(engine, engine.getSabotageManager()));
+                new TaskId(java.util.UUID.fromString("22222222-2222-2222-2222-222222222222")), new Position(179f, 1420f),
+                new FixLightsMinigameProvider(engine, engine.getSabotageManager()));
         }
 
         allTasks.put(internetSabotageTask.getId(), internetSabotageTask);
@@ -152,7 +169,7 @@ public class GameSessionImpl implements GameSession {
                 // --- MAPA 1: Aulas Principal ---
                 taskPool.add(List.of(taskFactory.createToiletTask(new Position(3175f, 1874f))));
                 taskPool.add(List.of(taskFactory.createWhiteBoardTask(new Position(1800f, 1663f))));
-                taskPool.add(List.of(taskFactory.createWiresTask(new Position(763f, 107f))));
+                taskPool.add(List.of(taskFactory.createWiresTask(new Position(925f, 858f))));
                 taskPool.add(List.of(taskFactory.createBotellonTask(new Position(545f, 577f))));
                 taskPool.add(List.of(taskFactory.createNumberTask(new Position(2495f, 589f))));
                 taskPool.add(taskFactory.createTrashTask(new Position(2065f, 609f), new Position(1646f, 331f)));
@@ -163,7 +180,7 @@ public class GameSessionImpl implements GameSession {
                 taskPool.add(List.of(taskFactory.createWhiteBoardTask(new Position(981f, 940f))));
                 taskPool.add(List.of(taskFactory.createWiresTask(new Position(1670f, 2055f))));
                 taskPool.add(List.of(taskFactory.createBotellonTask(new Position(3212f, 548f))));
-                taskPool.add(List.of(taskFactory.createNumberTask(new Position(1560f, 510f))));
+                taskPool.add(List.of(taskFactory.createNumberTask(new Position(472f, 1996f))));
                 taskPool.add(taskFactory.createTrashTask(new Position(1740f, 1086f), new Position(1902f, 1537f)));
                 taskPool.add(List.of(taskFactory.createBasketTask(new Position(2797f, 552f))));
             }
@@ -344,6 +361,15 @@ public class GameSessionImpl implements GameSession {
 
         Task task = allTasks.get(taskId);
         if (task == null) return;
+
+        if (task.getTaskType() == TaskType.SABOTAGE) {
+            SabotageManager.SabotageType activeType = engine.getSabotageManager().getActiveSabotage();
+            boolean isInternetTask = internetSabotageTask != null && taskId.equals(internetSabotageTask.getId());
+            boolean isLightsTask = fixLightsSabotageTask != null && taskId.equals(fixLightsSabotageTask.getId());
+            boolean sabotageActiveForTask = (isInternetTask && activeType == SabotageManager.SabotageType.INTERNET)
+                || (isLightsTask && activeType == SabotageManager.SabotageType.LIGHTS);
+            if (!sabotageActiveForTask) return;
+        }
 
         Player player = players.get(playerId);
         if (!task.canInteract(playerId, player.getPosition())) return;

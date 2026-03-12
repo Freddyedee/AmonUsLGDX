@@ -34,6 +34,7 @@ public class InputHandler {
     private static final float EMERGENCY_RADIUS = 150f;
 
     private float emergencyCooldown = 30f;
+    private float freezeTimer = 0f;
     private GameState previousState = GameState.LOBBY;
 
     private int keyKill = Input.Keys.Q;
@@ -76,6 +77,18 @@ public class InputHandler {
         // Detectar el inicio de la partida o fin de la reunión
         if (snapshot.getState() == GameState.IN_GAME && previousState != GameState.IN_GAME) {
             emergencyCooldown = 30f;
+            // Diferenciamos de dónde venimos
+            if (previousState == GameState.LOBBY) {
+                freezeTimer = 5f; // 5 segundos para la intro gigante
+            } else {
+                freezeTimer = 0f;
+            }
+
+            for (PlayerView pv : snapshot.getPlayers()) {
+                if (!pv.isAlive()) {
+                    staleCorpses.add(pv.getId());
+                }
+            }
         }
         previousState = snapshot.getState();
 
@@ -160,6 +173,11 @@ public class InputHandler {
     }
 
     private void handleMovement(float delta) {
+        if (freezeTimer > 0) {
+            // Le decimos al motor que detenga la animación por si se quedó pegada
+            engine.setPlayerMoving(localPlayerId, false, direccion);
+            return;
+        }
         float speed = 250f;
         float dx = 0, dy = 0;
 
@@ -343,6 +361,11 @@ public class InputHandler {
     private void updateTimers(float delta) {
         if (killCooldown > 0) killCooldown -= delta;
         if (emergencyCooldown > 0) emergencyCooldown -= delta;
+        if (freezeTimer > 0) freezeTimer -= delta;
+    }
+
+    public float getFreezeTimer() {
+        return Math.max(0, freezeTimer);
     }
 
     private PlayerView findLocalPlayer(GameSnapshot snapshot) {
