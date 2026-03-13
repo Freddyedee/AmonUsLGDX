@@ -463,7 +463,7 @@ public class GameScreen implements Screen {
                 }
             } else {
                 batch.begin();
-                font.draw(batch, "ESTAS INHABILITADO - MODO ESPECTADOR", 20, Gdx.graphics.getHeight() - 20);
+                font.draw(batch, "ESTAS INHABILITADO - MODO ESPECTADOR", 20, Gdx.graphics.getHeight() - 75);
                 font.draw(batch, "[ ESPACIO / FLECHAS ] para cambiar de camara", 20, Gdx.graphics.getHeight() - 40);
                 batch.end();
             }
