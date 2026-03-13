@@ -100,10 +100,10 @@ public class AboutScreen implements Screen {
 
         Label devsLabel = new Label(
             "Freddy Marcano - Estructura, Modularizacion, Eventos (Votos/Kills)\n" +
-                "Freddy Salazar - Colisiones y Menus\n" +
-                "Sebastian Argotte - Implementacion de Misiones\n" +
+                "Freddy Salazar - Menus y Lógica principal\n" +
+                "Sebastian Argotte - Implementacion de Misiones y Sabotajes\n" +
                 "Eliuber Gonzalez - Multijugador (Red)\n" +
-                "Santiago Bolivar - Arte y Mapas (Villa Asia)", skin);
+                "Santiago Bolivar - Arte, Mapas y Colisiones", skin);
         devsLabel.setAlignment(Align.center);
 
         // ── Botón de regreso ──
