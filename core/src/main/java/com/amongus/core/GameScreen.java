@@ -8,6 +8,7 @@ import com.amongus.core.api.player.Role;
 import com.amongus.core.api.player.SkinColor;
 import com.amongus.core.api.state.GameState;
 import com.amongus.core.api.task.TaskType;
+import com.amongus.core.impl.actions.ChatAction;
 import com.amongus.core.impl.actions.NetworkActionSender;
 import com.amongus.core.impl.actions.SabotageAction;
 import com.amongus.core.impl.engine.GameEngine;
@@ -256,6 +257,7 @@ public class GameScreen implements Screen {
         }
 
         // ── LÓGICA DE SALA DE ESPERA ──
+        // Solo permitimos abrir el menú si estamos en el LOBBY
         if (snapshot.getState() == GameState.LOBBY) {
 
             // Limpieza visual de la reunión
@@ -263,7 +265,10 @@ public class GameScreen implements Screen {
             meetingWasSkipped = false;
             meetingTimer = 0f;
 
-            inputHandler.handleGameInput(snapshot, delta);
+            // Bloqueamos el movimiento si el chat está abierto
+            if (!votingRenderer.isChatOpen) {
+                inputHandler.handleGameInput(snapshot, delta);
+            }
             snapshot = engine.getSnapshot();
 
             clear(0, 0, 0, 1);
@@ -297,7 +302,7 @@ public class GameScreen implements Screen {
                     font.setColor(Color.WHITE);
                 } else {
                     font.setColor(Color.RED);
-                    font.draw(batch, "FALTAN JUGADORES PARA INICIAR (" + playerCount + "/2)", Gdx.graphics.getWidth() / 2f - 180, 50);
+                    font.draw(batch, "FALTAN JUGADORES PARA INICIAR (" + playerCount + "/4)", Gdx.graphics.getWidth() / 2f - 180, 50);
                     font.setColor(Color.WHITE);
                 }
             } else {
@@ -310,37 +315,94 @@ public class GameScreen implements Screen {
             // 1. Dibujamos el Botón de Configuración
             hudRenderer.drawConfigButton(batch);
 
-            // 2. Dibujamos los botones del HUD (Engañamos al HUD diciéndole que somos CREWMATE para que ponga el botón USAR a la derecha)
+            // 2. Dibujamos los botones del HUD
             hudRenderer.draw(batch, false, false, false, canUseConsole, delta, 0f, Role.CREWMATE);
 
             // Lógica exclusiva del HOST
             if (isHost) {
-                // 3. Dibujamos el botón de Start (ahora aparece arriba del Usar)
+                // 3. Dibujamos el botón de Start
                 hudRenderer.drawStartButton(batch);
 
-                // --- ACCIÓN: Cambiar Mapa ---
-                // Detecta tanto la tecla E como el click en el botón en pantalla
-                if (canUseConsole && (Gdx.input.isKeyJustPressed(Input.Keys.E) || hudRenderer.isUseClicked())) {
-                    MapType[] maps = MapType.values();
-                    int nextIdx = (engine.getMapType().ordinal() + 1) % maps.length;
-                    MapType nextMap = maps[nextIdx];
+                // Bloqueamos los atajos (Enter, E) para no activarlos al chatear
+                if (!votingRenderer.isChatOpen) {
+                    // --- ACCIÓN: Cambiar Mapa ---
+                    if (canUseConsole && (Gdx.input.isKeyJustPressed(Input.Keys.E) || hudRenderer.isUseClicked())) {
+                        MapType[] maps = MapType.values();
+                        int nextIdx = (engine.getMapType().ordinal() + 1) % maps.length;
+                        MapType nextMap = maps[nextIdx];
 
-                    engine.setMapType(nextMap);
-                    if (clienteRed != null) {
-                        clienteRed.enviarMensaje("CHANGE_MAP:" + nextMap.name());
+                        engine.setMapType(nextMap);
+                        if (clienteRed != null) {
+                            clienteRed.enviarMensaje("CHANGE_MAP:" + nextMap.name());
+                        }
+                    }
+
+                    // --- ACCIÓN: Iniciar Partida ---
+                    if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER) || hudRenderer.isStartClicked()) {
+                        engine.startGameHost(clienteRed);
                     }
                 }
+            }
 
-                // --- ACCIÓN: Iniciar Partida ---
-                if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER) || hudRenderer.isStartClicked()) {
-                    engine.startGameHost(clienteRed);
+            // LÓGICA DE CHAT EN EL LOBBY
+            batch.getProjectionMatrix().setToOrtho2D(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+            float btnChatW = 100f;
+            float btnChatH = 50f;
+
+            float btnChatX = 20f;
+            float btnChatY = Gdx.graphics.getHeight() - btnChatH - 80f;
+
+            batch.begin();
+            batch.setColor(0.3f, 0.3f, 0.3f, 0.8f);
+            batch.draw(pixelBlanco, btnChatX, btnChatY, btnChatW, btnChatH);
+            batch.setColor(Color.WHITE);
+            font.draw(batch, "CHAT", btnChatX + 15f, btnChatY + 35f);
+            batch.end();
+
+            // Detectar clic en el botón de chat
+            if (Gdx.input.isButtonJustPressed(Input.Buttons.LEFT)) {
+                float mx = Gdx.input.getX();
+                float my = Gdx.graphics.getHeight() - Gdx.input.getY();
+                if (mx >= btnChatX && mx <= btnChatX + btnChatW && my >= btnChatY && my <= btnChatY + btnChatH) {
+                    votingRenderer.isChatOpen = !votingRenderer.isChatOpen;
+                    if (votingRenderer.isChatOpen) {
+                        Gdx.input.setInputProcessor(votingRenderer.stage);
+                        votingRenderer.stage.setKeyboardFocus(votingRenderer.chatField);
+                    } else {
+                        Gdx.input.setInputProcessor(null);
+                        votingRenderer.stage.unfocusAll();
+                    }
                 }
             }
+
+            // Dibujar el overlay del chat a 4K si está abierto
+            if (votingRenderer.isChatOpen) {
+                batch.getProjectionMatrix().setToOrtho2D(0, 0, 3840, 2160);
+                batch.begin();
+                votingRenderer.drawChatOverlay(batch, engine.getChatMessages());
+                batch.end();
+                votingRenderer.stage.act(delta);
+                votingRenderer.stage.draw();
+            }
+
+            // Enviar mensajes pendientes a la red
+            String pendingMsgLobby = votingRenderer.getAndClearPendingMessage();
+            if (pendingMsgLobby != null) {
+                actionSender.send(new com.amongus.core.impl.actions.ChatAction(myPlayerId, pendingMsgLobby));
+            }
+
             return;
         }
 
         // ── LÓGICA DE PARTIDA (IN_GAME) ──
         if (snapshot.getState() == GameState.IN_GAME) {
+
+            // Seguro para ocultar el chat al empezar a jugar
+            if (votingRenderer.isChatOpen) {
+                votingRenderer.isChatOpen = false;
+                Gdx.input.setInputProcessor(null);
+                votingRenderer.stage.unfocusAll();
+            }
 
             if (showingMeetingResults) {
                 meetingTimer += delta;
@@ -353,6 +415,10 @@ public class GameScreen implements Screen {
                 votingRenderer.draw(batch, snapshot, engine.getCurrentReporterId(),
                     meetingTimer, engine.getVotedPlayers(),
                     true, meetingWasSkipped, wasEmergency, null, engine.getChatMessages());
+                String pendingMsgResults = votingRenderer.getAndClearPendingMessage();
+                if (pendingMsgResults != null) {
+                    actionSender.send(new ChatAction(myPlayerId, pendingMsgResults));
+                }
                 batch.end();
 
                 if (votingRenderer.isChatOpen && votingRenderer.stage != null) {
@@ -503,6 +569,12 @@ public class GameScreen implements Screen {
             if (votingRenderer.isChatOpen && votingRenderer.stage != null) {
                 votingRenderer.stage.act(delta);
                 votingRenderer.stage.draw();
+            }
+
+            //  Enviar el mensaje a la red durante las reuniones
+            String pendingMsgMeeting = votingRenderer.getAndClearPendingMessage();
+            if (pendingMsgMeeting != null) {
+                actionSender.send(new ChatAction(myPlayerId, pendingMsgMeeting));
             }
 
             if (meetingTimer >= 60f || todosVotaron) {

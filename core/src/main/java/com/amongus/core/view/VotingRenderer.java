@@ -6,6 +6,7 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.Texture.TextureFilter;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator;
 import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator.FreeTypeFontParameter;
@@ -168,7 +169,7 @@ public class VotingRenderer {
         }
         fontNormal.draw(batch, instruccion, tabletX, tabletY + tabletH + 40f);
 
-        String tiempoInfo = showingResults ? "Reunion Finalizada" : (timer < 15f ? "Discusion: " + (int)(15 - timer) + "s" : "Vota: " + (int)(60 - timer) + "s");
+        String tiempoInfo = showingResults ? "Reunion Finalizada" : (timer < 15f ? "Discusion: " + (int) (15 - timer) + "s" : "Vota: " + (int) (60 - timer) + "s");
         fontNormal.draw(batch, tiempoInfo, tabletX + 600f, tabletY + tabletH + 40f);
 
         // --- DIBUJAR JUGADORES ---
@@ -210,7 +211,7 @@ public class VotingRenderer {
             // Nombre
             fontNormal.setColor(pv.isAlive() ? Color.BLACK : new Color(0.5f, 0f, 0f, 1f));
             String text = (i + 1) + ". " + pv.getName() + (pv.getId().equals(snapshot.getLocalPlayerId()) ? " (Tu)" : "");
-            if(!pv.isAlive()) text += " [INHABILITADO]";
+            if (!pv.isAlive()) text += " [INHABILITADO]";
             fontNormal.draw(batch, text, x + 80, y + rectH / 2f + 20, rectW - 100, Align.left, false);
 
             // I Voted
@@ -281,45 +282,49 @@ public class VotingRenderer {
 
         // --- DIBUJAR CHAT (Si está abierto) ---
         if (isChatOpen) {
-            float chatW = 1600f;
-            float chatH = 1400f;
-            float chatX = (3840f - chatW) / 2f;
-            float chatY = (2160f - chatH) / 2f;
+            drawChatOverlay(batch, chatMessages);
+        }
+    }
 
-            // Fondo oscuro para atenuar todo lo de atrás y destacar el chat
-            batch.setColor(0f, 0f, 0f, 0.7f);
-            batch.draw(imgRectangulo, 0, 0, 3840f, 2160f);
+    // Dibuja solo el chat para poder usarlo en cualquier pantalla
+    public void drawChatOverlay(SpriteBatch batch, java.util.List<ChatMessage> chatMessages) {
+        float chatW = 1600f;
+        float chatH = 1400f;
+        float chatX = (3840f - chatW) / 2f;
+        float chatY = (2160f - chatH) / 2f;
 
-            // Fondo del chat
-            batch.setColor(0f, 0f, 0f, 0.9f);
-            batch.draw(imgRectangulo, chatX, chatY, chatW, chatH);
-            batch.setColor(Color.WHITE);
+        // Fondo oscuro
+        batch.setColor(0f, 0f, 0f, 0.7f);
+        batch.draw(imgRectangulo, 0, 0, 3840f, 2160f);
 
-            fontNormal.setColor(Color.CYAN);
-            fontNormal.draw(batch, "CHAT DE REUNION", chatX + 40, chatY + chatH - 40);
+        // Fondo del chat
+        batch.setColor(0f, 0f, 0f, 0.9f);
+        batch.draw(imgRectangulo, chatX, chatY, chatW, chatH);
+        batch.setColor(Color.WHITE);
 
-            // Mostrar los últimos mensajes
-            if (chatMessages != null && !chatMessages.isEmpty()) {
-                float msgY = chatY + chatH - 150;
-                int startIndex = Math.max(0, chatMessages.size() - 15);
-                for (int i = startIndex; i < chatMessages.size(); i++) {
-                    ChatMessage msg = chatMessages.get(i);
-                    String line = msg.getSenderName() + ": " + msg.getText();
+        fontNormal.setColor(Color.CYAN);
+        fontNormal.draw(batch, "CHAT DE LA PARTIDA", chatX + 40, chatY + chatH - 40);
 
-                    com.badlogic.gdx.graphics.g2d.GlyphLayout layout = new com.badlogic.gdx.graphics.g2d.GlyphLayout();
-                    layout.setText(fontNormal, line, Color.WHITE, chatW - 80, Align.left, true);
+        if (chatMessages != null && !chatMessages.isEmpty()) {
+            float msgY = chatY + chatH - 150;
+            int startIndex = Math.max(0, chatMessages.size() - 15);
+            for (int i = startIndex; i < chatMessages.size(); i++) {
+                ChatMessage msg = chatMessages.get(i);
+                String line = msg.getSenderName() + ": " + msg.getText();
 
-                    fontNormal.draw(batch, line, chatX + 40, msgY, chatW - 80, Align.left, true);
-                    msgY -= (layout.height + 30);
-                }
-            } else {
-                fontNormal.setColor(Color.WHITE);
-                fontNormal.draw(batch, "Sin mensajes.", chatX + 40, chatY + chatH - 150);
+                GlyphLayout layout = new GlyphLayout();
+                layout.setText(fontNormal, line, Color.WHITE, chatW - 80, Align.left, true);
+
+                fontNormal.draw(batch, line, chatX + 40, msgY, chatW - 80, Align.left, true);
+                msgY -= (layout.height + 30);
             }
+        } else {
+            fontNormal.setColor(Color.WHITE);
+            fontNormal.draw(batch, "Sin mensajes.", chatX + 40, chatY + chatH - 150);
+        }
+    }
 
-            // El TextField (stage) se dibuja desde GameScreen.java
-        }
-        }
+
 
         public void dispose() {
         fontNormal.dispose();
@@ -334,4 +339,5 @@ public class VotingRenderer {
         imgRechazar.dispose();
         if (stage != null) stage.dispose();
         if (skin != null) skin.dispose();
-        }}
+        }
+}
