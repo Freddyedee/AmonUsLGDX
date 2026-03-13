@@ -1,9 +1,13 @@
 package com.amongus.core.view;
 
+import com.amongus.core.api.player.PlayerId;
+import com.amongus.core.api.task.TaskType;
+import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Disposable;
 
 /**
@@ -50,9 +54,9 @@ public class TaskArrowRenderer implements Disposable {
      */
     public void draw(SpriteBatch batch,
                      GameSnapshot snapshot,
-                     com.amongus.core.api.player.PlayerId myPlayerId,
+                     PlayerId myPlayerId,
                      float screenW, float screenH,
-                     com.badlogic.gdx.graphics.OrthographicCamera camera) {
+                     OrthographicCamera camera) {
 
         // Posición del jugador local en el mundo
         PlayerView me = snapshot.getPlayers().stream()
@@ -64,6 +68,7 @@ public class TaskArrowRenderer implements Disposable {
         float py = me.getPosition().y();
 
         for (TaskView tv : snapshot.getTasks()) {
+            if (tv.getTaskType() == TaskType.SABOTAGE) continue; // No dibujar flecha normal para sabotajes
             if (tv.isCompleted()) continue;   // tarea completada → sin flecha
 
             float tx = tv.getPosition().x();
@@ -84,7 +89,7 @@ public class TaskArrowRenderer implements Disposable {
             // ── Posición en el borde de pantalla ──────────────────────
             // Convertimos la posición de la tarea a coordenadas de pantalla
             // para saber en qué dirección está desde el centro
-            com.badlogic.gdx.math.Vector3 taskScreen = new com.badlogic.gdx.math.Vector3(tx, ty, 0);
+            Vector3 taskScreen = new Vector3(tx, ty, 0);
             camera.project(taskScreen);   // → coordenadas de pantalla
 
             float cx = screenW / 2f;

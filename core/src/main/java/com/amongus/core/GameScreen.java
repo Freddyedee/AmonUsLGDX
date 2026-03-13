@@ -7,6 +7,7 @@ import com.amongus.core.api.player.PlayerId;
 import com.amongus.core.api.player.Role;
 import com.amongus.core.api.player.SkinColor;
 import com.amongus.core.api.state.GameState;
+import com.amongus.core.api.task.TaskType;
 import com.amongus.core.impl.actions.NetworkActionSender;
 import com.amongus.core.impl.actions.SabotageAction;
 import com.amongus.core.impl.engine.GameEngine;
@@ -546,7 +547,7 @@ public class GameScreen implements Screen {
         }
 
         for (PlayerView pv : snapshot.getPlayers()) {
-            if (pv.getId().equals(myPlayerId)) continue;
+            if (pv.getId().equals(targetId)) continue;
             if (pv.isVenting()) continue;
 
             int dir = pv.getDirection();
@@ -575,7 +576,7 @@ public class GameScreen implements Screen {
             float size = radius * 2.8f;
             float halfSize = size / 2f;
 
-            com.badlogic.gdx.math.Vector3 screenPos = new com.badlogic.gdx.math.Vector3(targetView.getPosition().x(), targetView.getPosition().y(), 0);
+            Vector3 screenPos = new Vector3(targetView.getPosition().x(), targetView.getPosition().y(), 0);
             camera.project(screenPos);
 
             float cx = screenPos.x;
@@ -615,7 +616,9 @@ public class GameScreen implements Screen {
         batch.begin();
 
         if (targetView != null && !targetView.isVenting()) {
-            playerRenderer.draw(batch, targetView.getPosition().x(), targetView.getPosition().y(), targetView.getId(), inputHandler.getDireccion(), targetView.isMoving(), targetView.isAlive(), targetView.getSkinColor());
+            // Si somos nosotros, usamos nuestro teclado. Si estamos espectando, usamos su dirección de red.
+            int renderDir = targetView.getId().equals(myPlayerId) ? inputHandler.getDireccion() : targetView.getDirection();
+            playerRenderer.draw(batch, targetView.getPosition().x(), targetView.getPosition().y(), targetView.getId(), renderDir, targetView.isMoving(), targetView.isAlive(), targetView.getSkinColor());
         }
 
         for (PlayerView pv : snapshot.getPlayers()) {
@@ -992,27 +995,63 @@ public class GameScreen implements Screen {
     }
 
     private void renderSabotageArrow(GameSnapshot snapshot) {
+        PlayerView me = findLocalPlayer(snapshot);
+        if (me == null) return;
+
         snapshot.getTasks().stream()
-            .filter(tv -> tv.getTaskType() == com.amongus.core.api.task.TaskType.SABOTAGE && !tv.isCompleted())
+            .filter(tv -> tv.getTaskType() == TaskType.SABOTAGE)
+            .filter(tv -> {
+                // SOLUCIÓN 1: Convertir el UUID a String antes de comparar
+                String idStr = tv.getId().value().toString();
+                if (internetSabotaged && idStr.equals("11111111-1111-1111-1111-111111111111")) return true;
+                if (lightsSabotaged && idStr.equals("22222222-2222-2222-2222-222222222222")) return true;
+                return false;
+            })
             .findFirst()
             .ifPresent(sabTask -> {
-                Vector3 worldPos = new Vector3(sabTask.getPosition().x(), sabTask.getPosition().y(), 0);
-                camera.project(worldPos);
+                // SOLUCIÓN 2: Calcular la matemática exacta en el mundo y la pantalla
+                float px = me.getPosition().x();
+                float py = me.getPosition().y();
+                float tx = sabTask.getPosition().x();
+                float ty = sabTask.getPosition().y();
+
+                // Ángulo real en el mundo (desde el jugador hacia el sabotaje)
+                float angleDeg = (float) Math.toDegrees(Math.atan2(ty - py, tx - px));
+
+                // Proyectamos a la pantalla para saber hacia dónde ir desde el centro
+                Vector3 taskScreen = new Vector3(tx, ty, 0);
+                camera.project(taskScreen);
 
                 float sw = Gdx.graphics.getWidth();
                 float sh = Gdx.graphics.getHeight();
-                boolean onScreen = worldPos.x >= 0 && worldPos.x <= sw && worldPos.y >= 0 && worldPos.y <= sh;
+                float cx = sw / 2f;
+                float cy = sh / 2f;
 
-                if (!onScreen) {
-                    float margin = 40f;
-                    float clampedX = MathUtils.clamp(worldPos.x, margin, sw - margin);
-                    float clampedY = MathUtils.clamp(worldPos.y, margin, sh - margin);
-                    float angle = (float) Math.toDegrees(Math.atan2(worldPos.y - sh / 2f, worldPos.x - sw / 2f));
+                float dx = taskScreen.x - cx;
+                float dy = taskScreen.y - cy;
 
-                    batch.setColor(1f, 0.15f, 0.15f, 1f); // Flecha Roja
-                    taskArrowRenderer.drawSingleArrow(batch, clampedX, clampedY, angle, 45f);
-                    batch.setColor(1f, 1f, 1f, 1f);
+                float size = 50f;
+                float padding = 40f;
+                float innerW = sw / 2f - padding - size / 2f;
+                float innerH = sh / 2f - padding - size / 2f;
+
+                if (dx == 0 && dy == 0) return; // Evitar división por cero si estás exactamente encima
+
+                float arrowX, arrowY;
+                // Lógica de anclaje a los bordes (la misma que usaste en TaskArrowRenderer)
+                if (Math.abs(dx) * innerH > Math.abs(dy) * innerW) {
+                    float scale = innerW / Math.abs(dx);
+                    arrowX = cx + dx * scale;
+                    arrowY = cy + dy * scale;
+                } else {
+                    float scale = innerH / Math.abs(dy);
+                    arrowX = cx + dx * scale;
+                    arrowY = cy + dy * scale;
                 }
+
+                batch.setColor(1f, 0.15f, 0.15f, 1f); // Flecha Roja
+                taskArrowRenderer.drawSingleArrow(batch, arrowX, arrowY, angleDeg, size);
+                batch.setColor(1f, 1f, 1f, 1f);
             });
     }
 

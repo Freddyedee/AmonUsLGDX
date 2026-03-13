@@ -218,7 +218,7 @@ public class VotingRenderer {
                 batch.draw(imgIVoted, x + rectW - 150, y + 30, 120, 120);
             }
 
-            // 👇 DIBUJAR BOTONES DE CONFIRMAR/RECHAZAR SI ESTÁ SELECCIONADO
+            // DIBUJAR BOTONES DE CONFIRMAR/RECHAZAR SI ESTÁ SELECCIONADO
             if (isSelected && timer >= 15f && !votedPlayers.contains(snapshot.getLocalPlayerId())) {
                 float btnSize = 120f;
                 float btnY = y + (rectH - btnSize) / 2f; // Centrado verticalmente
