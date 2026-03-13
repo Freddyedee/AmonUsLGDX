@@ -37,14 +37,12 @@ public class Server extends Thread {
 
     //Recibe el mensaje del jugador y le avisa a los demas
     public void enviarATodos(String mensaje, PlayerHandler remitente) {
-        // Hacemos una copia de la lista para iterar de forma segura
-        List<PlayerHandler> copia;
+        // Bloqueamos la lista original por milisegundos solo para leerla y enviar los mensajes
         synchronized(clients) {
-            copia = new ArrayList<>(clients);
-        }
-        for(PlayerHandler p : copia) {
-            if(p != remitente) {
-                p.enviarMensaje(mensaje);
+            for(PlayerHandler p : clients) {
+                if(p != remitente) {
+                    p.enviarMensaje(mensaje);
+                }
             }
         }
     }

@@ -18,6 +18,8 @@ public class NetworkActionSender implements ActionSender {
     private final GameEngine engine;
     private final GameClient client;
 
+    private long lastMovePacketTime = 0;
+
     public NetworkActionSender(GameEngine engine, GameClient client) {
         this.engine = engine;
         this.client = client;
@@ -46,6 +48,13 @@ public class NetworkActionSender implements ActionSender {
         if (client != null) {
             switch (action.getType()) {
                 case MOVE -> {
+                    // NUEVO: Escudo Anti-Saturación
+                    long currentTime = System.currentTimeMillis();
+                    // Enviamos posición a la red máximo 15 veces por segundo (cada 66 milisegundos)
+                    if (currentTime - lastMovePacketTime < 66) {
+                        return; // Cortamos aquí. Te mueves en tu pantalla, pero no saturas el router.
+                    }
+                    lastMovePacketTime = currentTime;
                     MoveAction ma = (MoveAction) action;
                     // Obtenemos la dirección actual de nuestro jugador local
                     int dir = engine.getSnapshot().getPlayers().stream()
