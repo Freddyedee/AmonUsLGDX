@@ -4,17 +4,15 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Net;
 import com.badlogic.gdx.net.ServerSocket;
 import com.badlogic.gdx.net.Socket;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class Server extends Thread {
-    private final List<PlayerHandler> clients = Collections.synchronizedList(new ArrayList<>());
-    private ServerSocket serverSocket; // Atributo de clase
+    // CopyOnWriteArrayList es a prueba de bloqueos (thread-safe)
+    private final List<PlayerHandler> clients = new CopyOnWriteArrayList<>();
+    private ServerSocket serverSocket;
 
     public Server() {
-        // Inicializamos el socket en el constructor (hilo principal)
-        // para asegurar que el puerto esté abierto antes de que el cliente intente conectarse.
         serverSocket = Gdx.net.newServerSocket(Net.Protocol.TCP, 5000, null);
         System.out.println("[SERVIDOR] Servidor se ha iniciado en el puerto 5000");
     }
@@ -30,19 +28,15 @@ public class Server extends Thread {
                 System.out.println("[SERVIDOR] Nuevo jugador conectado. Total: " + clients.size());
             }
         } catch (Exception e) {
-            // Este catch atrapará el error cuando cerremos el socket desde fuera
             System.out.println("Servidor detenido o error en puerto: " + e.getMessage());
         }
     }
 
-    //Recibe el mensaje del jugador y le avisa a los demas
+    // Recibe el mensaje del jugador y le avisa a los demas
     public void enviarATodos(String mensaje, PlayerHandler remitente) {
-        // Bloqueamos la lista original por milisegundos solo para leerla y enviar los mensajes
-        synchronized(clients) {
-            for(PlayerHandler p : clients) {
-                if(p != remitente) {
-                    p.enviarMensaje(mensaje);
-                }
+        for(PlayerHandler p : clients) {
+            if(p != remitente) {
+                p.enviarMensaje(mensaje);
             }
         }
     }
@@ -58,7 +52,7 @@ public class Server extends Thread {
         }
     }
 
-    //se remueve el jugador que se salga de la partida
+    // Se remueve el jugador que se salga de la partida
     public void DeleteClient(PlayerHandler p) {
         clients.remove(p);
         System.out.println("Jugador removido. Total: " + clients.size());

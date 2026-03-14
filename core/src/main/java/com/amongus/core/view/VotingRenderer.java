@@ -325,7 +325,6 @@ public class VotingRenderer {
             for (int i = startIndex; i < chatMessages.size(); i++) {
                 ChatMessage msg = chatMessages.get(i);
                 String line = msg.getSenderName() + ": " + msg.getText();
-
                 GlyphLayout layout = new GlyphLayout();
                 layout.setText(fontNormal, line, Color.WHITE, chatW - 80, Align.left, true);
 

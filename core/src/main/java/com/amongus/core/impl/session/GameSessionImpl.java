@@ -37,7 +37,6 @@ public class GameSessionImpl implements GameSession {
     private final GameStateMachine stateMachine;
     private final Map<PlayerId, Player> players;
     private final Map<PlayerId, Vote> currentVotes;
-
     // --------------------------------------------------
     // ATRIBUTOS RELACIONADOS CON TASK
     // -------------------------------------------------
@@ -121,7 +120,7 @@ public class GameSessionImpl implements GameSession {
 
     @Override
     public void startGame(){
-        if (players.size() < 5){
+        if (players.size() < 3){
             throw new IllegalStateException("No hay suficientes jugadores");
         }
 

@@ -24,12 +24,14 @@ public class PlayerHandler extends Thread{
     }
 
     //Envia un mensaje al servidor para que lo envie a todos
-    public void enviarMensaje(String msg) {
+    public void enviarMensaje(String mensaje) {
         try {
-            out.writeUTF(msg);
+            out.writeUTF(mensaje);
             out.flush();
-        } catch (IOException e) {
-            System.out.println("Error enviando a cliente: " + e.getMessage());
+        } catch (Exception e) {
+            // Si falla el envío (porque se desconectó de golpe), lo sacamos de inmediato.
+            System.out.println("Error enviando a cliente, forzando desconexión...");
+            server.DeleteClient(this);
         }
     }
 

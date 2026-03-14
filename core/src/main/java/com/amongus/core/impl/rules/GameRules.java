@@ -12,7 +12,7 @@ public class GameRules {
     }
 
     public static boolean canStartGame(Collection<Player> players){
-        return players.size() >= 5;
+        return players.size() >= 3;
     }
 
     public static boolean gameOver(Collection<Player> players){
