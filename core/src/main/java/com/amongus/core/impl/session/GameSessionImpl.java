@@ -51,7 +51,7 @@ public class GameSessionImpl implements GameSession {
     private InternetSabotageTask internetSabotageTask;
     private FixLightsSabotageTask fixLightsSabotageTask;
 
-    public GameSessionImpl(UUID sessionId, EventBus eventBus, GameMap gameMap, GameEngine engine){
+    public GameSessionImpl(EventBus eventBus, GameMap gameMap, GameEngine engine){
         this.engine = engine;
         this.sessionId = UUID.randomUUID();
         this.eventBus = eventBus;
@@ -121,7 +121,7 @@ public class GameSessionImpl implements GameSession {
 
     @Override
     public void startGame(){
-        if (players.size() < 1){
+        if (players.size() < 5){
             throw new IllegalStateException("No hay suficientes jugadores");
         }
 
@@ -206,17 +206,73 @@ public class GameSessionImpl implements GameSession {
         }
 
         // --- 3. INICIALIZAR LA BARRA DE PROGRESO ---
-        final int finalTotalTasks = totalTasks;
-        this.progressTracker = new TaskProgressTracker(totalTasks) {
+        int finalTotalTasks = totalTasks;
+        this.progressTracker = new TaskProgressTracker(finalTotalTasks) {
+            private int total = finalTotalTasks;
             private int completed = 0;
+
             @Override public void taskCompleted() { completed++; }
-            @Override public int getTotal() { return finalTotalTasks; }
+            @Override public int getTotal() { return total; }
             @Override public int getCompleted() { return completed; }
-            @Override public int getPending() { return finalTotalTasks - completed; }
+            @Override public int getPending() { return total - completed; }
+
+            // NUEVO METODO PARA REDUCIR TAREAS CUANDO ALGUIEN MUERE
+            public void removeTasks(int amountCompleted, int amountPending) {
+                this.completed -= amountCompleted;
+                this.total -= (amountCompleted + amountPending);
+                // Evitamos que el total quede negativo por algún error de cálculo
+                if (this.total < 0) this.total = 0;
+                if (this.completed < 0) this.completed = 0;
+            }
         };
 
         stateMachine.transitionTo(GameState.IN_GAME);
         eventBus.publish(new GameStartedEvent(sessionId));
+    }
+
+    // Gestion de Tareas para Jugadores Inhabilitados
+    private void clearTasksForDeadPlayer(PlayerId deadPlayerId) {
+        if (progressTracker == null) return;
+
+        Player player = players.get(deadPlayerId);
+        // Si el muerto era impostor, no afecta la barra
+        if (player == null || player.getRole() == Role.IMPOSTOR) return;
+
+        // 1. Contamos cuántas tareas tenía asignadas y completadas
+        Set<TaskId> assigned = assignedTaskIdsByPlayer.getOrDefault(deadPlayerId, new HashSet<>());
+        Set<TaskId> completed = completedTaskIdsByPlayer.getOrDefault(deadPlayerId, new HashSet<>());
+
+        // Excluimos los sabotajes de esta cuenta, ya que esos no suman a la barra total
+        int tasksCompleted = (int) completed.stream()
+            .map(allTasks::get)
+            .filter(Objects::nonNull)
+            .filter(Task::countsForProgress)
+            .count();
+
+        int tasksPending = (int) assigned.stream()
+            .filter(id -> !completed.contains(id))
+            .map(allTasks::get)
+            .filter(Objects::nonNull)
+            .filter(Task::countsForProgress)
+            .count();
+
+        // 2. Restamos esos valores del Tracker usando reflexión (porque es clase anónima)
+        // O más fácil, hacemos un cast seguro ya que sabemos cómo lo definimos
+        try {
+            java.lang.reflect.Method removeMethod = progressTracker.getClass().getMethod("removeTasks", int.class, int.class);
+            removeMethod.invoke(progressTracker, tasksCompleted, tasksPending);
+        } catch (Exception e) {
+            System.err.println("Error al remover tareas del jugador muerto: " + e.getMessage());
+        }
+
+        // 3. Limpiamos sus listas para que no vuelvan a procesarse
+        assignedTaskIdsByPlayer.remove(deadPlayerId);
+        completedTaskIdsByPlayer.remove(deadPlayerId);
+
+        System.out.println("[SESSION] Tareas del jugador " + deadPlayerId.value() + " eliminadas de la barra.");
+
+        // 4. Revisamos si con esta resta, los tripulantes ganaron
+        engine.checkWinConditions();
     }
 
     // --------------------------------------------------
@@ -285,6 +341,7 @@ public class GameSessionImpl implements GameSession {
 
         victim.kill();
         eventBus.publish(new KillAttemptedEvent(killerId, victimId));
+        clearTasksForDeadPlayer(victimId);
     }
 
     @Override

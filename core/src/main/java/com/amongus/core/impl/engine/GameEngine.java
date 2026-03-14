@@ -16,7 +16,6 @@ import com.amongus.core.api.session.TaskProgressTracker;
 import com.amongus.core.api.state.GameState;
 import com.amongus.core.api.task.Task;
 import com.amongus.core.api.task.TaskId;
-import com.amongus.core.api.task.TaskType;
 import com.amongus.core.impl.event.EventBusImpl;
 import com.amongus.core.impl.map.MaskCollisionMap;
 import com.amongus.core.impl.network.GameClient;
@@ -25,6 +24,7 @@ import com.amongus.core.impl.rules.GameRules;
 import com.amongus.core.impl.sabotage.SabotageManager;
 import com.amongus.core.impl.session.GameSessionImpl;
 import com.amongus.core.model.Position;
+import com.amongus.core.view.ChatMessage;
 import com.amongus.core.view.GameSnapshot;
 import com.amongus.core.view.PlayerView;
 import com.amongus.core.impl.player.PlayerImpl;
@@ -50,21 +50,24 @@ public class GameEngine {
     // --- VARIABLES DE REUNIÓN ---
     private PlayerId currentReporterId = null;
     private PlayerId currentVictimId = null;
-    private final java.util.List<com.amongus.core.view.ChatMessage> chatMessages = new java.util.ArrayList<>();
+    private final java.util.List<ChatMessage> chatMessages = new java.util.ArrayList<>();
     // --- Sabotaje ---
     private final SabotageManager sabotageManager = new SabotageManager();
 
-    public java.util.List<com.amongus.core.view.ChatMessage> getChatMessages() {
+    public java.util.List<ChatMessage> getChatMessages() {
         return chatMessages;
     }
 
     public void addChatMessage(PlayerId senderId, String message) {
-        String senderName = session.getPlayers().stream()
+        session.getPlayers().stream()
             .filter(p -> p.getId().equals(senderId))
             .findFirst()
-            .map(Player::getName)
-            .orElse("Unknown");
-        chatMessages.add(new com.amongus.core.view.ChatMessage(senderId, senderName, message));
+            .ifPresent(sender -> {
+                // Solo agregamos el mensaje si el jugador sigue vivo
+                if (sender.alive()) {
+                    chatMessages.add(new ChatMessage(senderId, sender.getName(), message));
+                }
+            });
     }
 
     public void clearChatMessages() {
@@ -88,7 +91,7 @@ public class GameEngine {
         this.mapType = mapType;
 
         this.gameMap = new MaskCollisionMap("mapas/SalaEsperaColisiones.png");
-        this.session = new GameSessionImpl(sessionId, eventBus, gameMap, this);
+        this.session = new GameSessionImpl(eventBus, gameMap, this);
 
         // Escuchamos eventos clave para evaluar si el juego terminó
         this.eventBus.subscribe(KillAttemptedEvent.class, event -> {
@@ -333,7 +336,19 @@ public class GameEngine {
 
         expelled.ifPresent(id->{
             session.getPlayers().stream()
-                .filter(p->p.getId().equals(id)).findFirst().ifPresent(Player::kill);
+                .filter(p->p.getId().equals(id)).findFirst().ifPresent(p -> {
+                    p.kill();
+                    // Si fue expulsado, quitamos sus tareas de la barra
+                    if (session instanceof GameSessionImpl) {
+                        try {
+                            java.lang.reflect.Method clearMethod = GameSessionImpl.class.getDeclaredMethod("clearTasksForDeadPlayer", PlayerId.class);
+                            clearMethod.setAccessible(true);
+                            clearMethod.invoke(session, id);
+                        } catch (Exception e) {
+                            System.err.println("Error limpiando tareas del expulsado.");
+                        }
+                    }
+                });
             System.out.println("[VOTACION] Expulsado: " + id);
         });
 
@@ -387,6 +402,9 @@ public class GameEngine {
         this.currentReporterId = null;
         this.currentVictimId = null;
         votingSystem.clearVotes();
+
+        // Limpia el chat
+        clearChatMessages();
 
         // 2. Teletransportamos a TODOS al centro del autobús
         Position lobbySpawn = new Position(1920f, 1080f);

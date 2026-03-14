@@ -174,6 +174,20 @@ public class VotingRenderer {
 
         // --- DIBUJAR JUGADORES ---
         List<PlayerView> players = snapshot.getPlayers();
+        // Validar si el jugador local está vivo para bloquear/desbloquear el chat
+        boolean localIsAlive = players.stream()
+            .filter(p -> p.getId().equals(snapshot.getLocalPlayerId()))
+            .map(PlayerView::isAlive)
+            .findFirst()
+            .orElse(false);
+
+        if (!localIsAlive) {
+            chatField.setDisabled(true); // Bloquea la escritura
+            chatField.setMessageText("Los inhabilitados no pueden hablar...");
+        } else {
+            chatField.setDisabled(false);
+            chatField.setMessageText("Escribe y presiona ENTER...");
+        }
         float rectW = 1200f;
         float rectH = 180f;
         float paddingX = 150f;

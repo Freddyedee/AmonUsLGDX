@@ -205,7 +205,7 @@ public class GameScreen implements Screen {
             darknessAlpha = Math.max(0f, darknessAlpha - delta * 4f); // Aclara más rápido
         }
 
-        //* ── ATAJOS DE DEBUG (Solo para desarrollo) ──
+        /* ── ATAJOS DE DEBUG (Solo para desarrollo) ──
         if (Gdx.input.isKeyJustPressed(Input.Keys.F1)) {
             // Enviamos el valor INVERSO al actual para alternarlo (Toggle)
             boolean newState = !DebugConfig.IGNORE_WIN_CONDITIONS;
@@ -217,7 +217,7 @@ public class GameScreen implements Screen {
             // Spawnea un bot azul para que lo uses de víctima
             engine.spawnTestingBot("Victima", SkinColor.AZUL);
         }
-        //*/
+        */
         if (engine.getGameResult() != null) {
             if (engine.getActiveMinigame() != null) {
                 engine.setActiveMinigame(null);
@@ -302,7 +302,7 @@ public class GameScreen implements Screen {
                     font.setColor(Color.WHITE);
                 } else {
                     font.setColor(Color.RED);
-                    font.draw(batch, "FALTAN JUGADORES PARA INICIAR (" + playerCount + "/4)", Gdx.graphics.getWidth() / 2f - 180, 50);
+                    font.draw(batch, "FALTAN JUGADORES PARA INICIAR (" + playerCount + "/5)", Gdx.graphics.getWidth() / 2f - 180, 50);
                     font.setColor(Color.WHITE);
                 }
             } else {
