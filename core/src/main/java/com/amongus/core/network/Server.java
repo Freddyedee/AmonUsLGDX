@@ -28,7 +28,13 @@ public class Server extends Thread {
                 System.out.println("[SERVIDOR] Nuevo jugador conectado. Total: " + clients.size());
             }
         } catch (Exception e) {
-            System.out.println("Servidor detenido o error en puerto: " + e.getMessage());
+            // Si el error es por cerrar el socket a propósito, lo mostramos como un éxito
+            if (e.getMessage() != null && e.getMessage().contains("Error accepting socket")) {
+                System.out.println("[SERVIDOR] Hilo del servidor cerrado correctamente.");
+            } else {
+                // Si es un error real, sí lo mostramos como alerta
+                System.out.println("[SERVIDOR ERROR] " + e.getMessage());
+            }
         }
     }
 
