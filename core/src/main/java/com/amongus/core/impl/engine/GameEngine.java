@@ -234,7 +234,7 @@ public class GameEngine {
         java.util.List<Player> players = new java.util.ArrayList<>(session.getPlayers());
 
         if (!GameRules.canStartGame(players)) {
-            System.out.println("[ENGINE] No se puede iniciar: Se requieren al menos 4 jugadores.");
+            System.out.println("[ENGINE] No se puede iniciar: Se requieren al menos 3 jugadores.");
             return; // Cortamos la ejecución, la partida no inicia
         }
 

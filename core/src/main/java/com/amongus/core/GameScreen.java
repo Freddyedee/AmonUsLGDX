@@ -302,7 +302,7 @@ public class GameScreen implements Screen {
                     font.setColor(Color.WHITE);
                 } else {
                     font.setColor(Color.RED);
-                    font.draw(batch, "FALTAN JUGADORES PARA INICIAR (" + playerCount + "/5)", Gdx.graphics.getWidth() / 2f - 180, 50);
+                    font.draw(batch, "FALTAN JUGADORES PARA INICIAR (" + playerCount + "/3)", Gdx.graphics.getWidth() / 2f - 180, 50);
                     font.setColor(Color.WHITE);
                 }
             } else {
